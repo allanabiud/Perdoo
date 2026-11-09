@@ -1,15 +1,31 @@
 __all__ = ["apply_patches"]
 
+from io import BytesIO
+from pathlib import Path
 import re
 from typing import TypeVar
 
 from msgspec import ValidationError
 from msgspec_xml import decode
+from natsort import humansorted, ns
+from PIL import Image
 from shortbox import Comic
-from shortbox.errors import MetadataValidationError
-from shortbox.metadata import Metadata
+from shortbox.errors import MetadataValidationError, MissingArchiveMemberError
+from shortbox.metadata import ComicInfo, Metadata
+from shortbox.metadata.comic_info import PageType
 
 MetadataT = TypeVar("MetadataT", bound=Metadata)
+
+_IMAGE_EXTENSIONS: set[str] = {
+    ".jpg",
+    ".jpeg",
+    ".png",
+    ".webp",
+    ".jxl",
+    ".gif",
+    ".bmp",
+    ".tiff",
+}
 
 
 def _sanitized_get_metadata(self: Comic, metadata_type: type[MetadataT]) -> MetadataT | None:
@@ -69,5 +85,60 @@ def _sanitized_get_metadata(self: Comic, metadata_type: type[MetadataT]) -> Meta
     return None
 
 
+def _robust_get_cover(self: Comic) -> bytes:
+    """Find and return the genuine cover image bytes from the comic archive."""
+    candidates = [
+        f
+        for f in self.list_filenames()
+        if not f.endswith("/")
+        and not f.startswith("__MACOSX/")
+        and Path(f).name.lower() not in {"thumbs.db", ".ds_store", "desktop.ini"}
+        and Path(f).suffix.lower() in _IMAGE_EXTENSIONS
+    ]
+    sorted_candidates = humansorted(candidates, alg=ns.NA | ns.G | ns.P)
+
+    # 1. Check ComicInfo for explicit FrontCover page
+    try:
+        if comic_info := self.get_metadata(ComicInfo):
+            for page in getattr(comic_info, "pages", []):
+                if getattr(page, "type", None) == PageType.FRONT_COVER:
+                    idx = getattr(page, "image", None)
+                    if idx is not None and 0 <= idx < len(sorted_candidates):
+                        target_file = sorted_candidates[idx]
+                        data = self.read_file(filename=target_file)
+                        if data:
+                            try:
+                                with Image.open(BytesIO(data)) as im:
+                                    im.verify()
+                                return data
+                            except Exception:
+                                pass
+    except Exception:
+        pass
+
+    # 2. Iterate candidates in natural order and return the first valid, readable image
+    for filename in sorted_candidates:
+        try:
+            data = self.read_file(filename=filename)
+            if data and len(data) > 0:
+                with Image.open(BytesIO(data)) as im:
+                    im.verify()
+                return data
+        except Exception:
+            continue
+
+    # 3. Fallback: return any readable data if verify failed
+    for filename in sorted_candidates:
+        try:
+            data = self.read_file(filename=filename)
+            if data and len(data) > 0:
+                return data
+        except Exception:
+            continue
+
+    raise MissingArchiveMemberError(f"{self.file.name!r} contains no valid image to use as a cover.")
+
+
 def apply_patches() -> None:
     Comic.get_metadata = _sanitized_get_metadata
+    Comic.get_cover = _robust_get_cover
