@@ -32,6 +32,7 @@ This repository is an enhanced fork of [Buried-In-Code/Perdoo](https://github.co
 - **Custom Metadata Preservation**: During re-sync, preserves user-customized fields that services do not populate: language, age rating, format, scan information, notes (merged with service IDs), and page-level bookmarks and specific page types.
 - **Concurrent Archive Processing**: The `convert` and `clean` commands use a thread pool (`-j` / `--jobs`) to process multiple archives in parallel. Defaults to the `output.webp-jobs` setting.
 - **ComicVine Rate Limit Retry**: Adds exponential backoff retry logic for ComicVine API calls, automatically detecting HTTP 420/429 rate-limit responses and waiting before retrying.
+- **Description-Based Format Detection (Mylar3-style)**: ComicVine stores no series format, so when Metron is missing a collected edition and the filename has no format keyword, Perdoo recognises the format from descriptors in the ComicVine volume/issue descriptions and decks (`Trade paperback collecting...`, `Hardcover collecting...`, `omnibus`, `compendium`, `deluxe`, `one-shot`, ...). Ported from Mylar3's `get_imprint_volume_and_booktype` heuristics, including its first-60-characters rule, negative-phrase guards (`... can be found`, `following the`, ...) and HTML stripping, plus `omnibus`/`compendium` detection Mylar3 itself lacks. Also ports Mylar3's One-Shot forcing rule (single-issue volume that started before the current year) as a last-resort fallback. See [Format Resolution](#format-resolution) for the full priority order.
 
 ## Installation
 
@@ -129,13 +130,13 @@ perdoo archive tree "/path/to/comic.cbz"
 
 ## Supported Formats
 
-| Format | Input | Output | Notes |
-| ------ | :---: | :----: | ----- |
+| Format | Input | Output | Notes                                                |
+| ------ | :---: | :----: | ---------------------------------------------------- |
 | CB7    |  Yes  |  Yes   | Falls back to system `7z` if Python bindings missing |
-| CBR    |  Yes  |  No    | Falls back to system `7z` for input conversion |
-| CBT    |  Yes  |  Yes   | |
-| CBZ    |  Yes  |  Yes   | |
-| PDF    |  Yes  |  No    | |
+| CBR    |  Yes  |   No   | Falls back to system `7z` for input conversion       |
+| CBT    |  Yes  |  Yes   |                                                      |
+| CBZ    |  Yes  |  Yes   |                                                      |
+| PDF    |  Yes  |   No   |                                                      |
 
 ### Metadata Files
 
@@ -187,33 +188,46 @@ Custom characters can still be added directly to patterns.
 
 ### Pattern Keys
 
-| Pattern Key          | Description                                                              |
-| -------------------- | ------------------------------------------------------------------------ |
-| `{cover-date}`       | The issue cover date in `yyyy-mm-dd` format.                             |
-| `{cover-day}`        | The day from the issue cover date.                                       |
-| `{cover-month}`      | The month from the issue cover date.                                     |
-| `{cover-year}`       | The year from the issue cover date.                                      |
-| `{format}`           | The full format name of the series (e.g. `Trade Paperback`, `Hardcover`).|
+| Pattern Key          | Description                                                                    |
+| -------------------- | ------------------------------------------------------------------------------ |
+| `{cover-date}`       | The issue cover date in `yyyy-mm-dd` format.                                   |
+| `{cover-day}`        | The day from the issue cover date.                                             |
+| `{cover-month}`      | The month from the issue cover date.                                           |
+| `{cover-year}`       | The year from the issue cover date.                                            |
+| `{format}`           | The full format name of the series (e.g. `Trade Paperback`, `Hardcover`).      |
 | `{format-short}`     | The short format abbreviation (`TPB`, `HC`, `OB`, `One-Shot`, `GN`, `Annual`). |
-| `{id}`               | The primary ID of the issue.                                             |
-| `{imprint}`          | The publisher's imprint.                                                 |
-| `{isbn}`             | The issue's ISBN.                                                        |
-| `{issue-count}`      | The total number of issues in the series.                                |
-| `{lang}`             | The issue's language.                                                    |
-| `{number}`           | The issue number.                                                        |
-| `{publisher-id}`     | The publisher's unique ID.                                               |
-| `{publisher-name}`   | The full name of the publisher.                                          |
-| `{series-id}`        | The series' unique ID.                                                   |
-| `{series-name}`      | The full name of the series.                                             |
-| `{series-sort-name}` | Sort-friendly series name, omitting leading words such as "The" and "A". |
-| `{series-year}`      | The year the series started.                                             |
-| `{store-date}`       | The issue store date in `yyyy-mm-dd` format.                             |
-| `{store-day}`        | The day from the issue store date.                                       |
-| `{store-month}`      | The month from the issue store date.                                     |
-| `{store-year}`       | The year from the issue store date.                                      |
-| `{title}`            | The issue title.                                                         |
-| `{upc}`              | The issue's UPC.                                                         |
-| `{volume}`           | The volume of the series.                                                |
+| `{id}`               | The primary ID of the issue.                                                   |
+| `{imprint}`          | The publisher's imprint.                                                       |
+| `{isbn}`             | The issue's ISBN.                                                              |
+| `{issue-count}`      | The total number of issues in the series.                                      |
+| `{lang}`             | The issue's language.                                                          |
+| `{number}`           | The issue number.                                                              |
+| `{publisher-id}`     | The publisher's unique ID.                                                     |
+| `{publisher-name}`   | The full name of the publisher.                                                |
+| `{series-id}`        | The series' unique ID.                                                         |
+| `{series-name}`      | The full name of the series.                                                   |
+| `{series-sort-name}` | Sort-friendly series name, omitting leading words such as "The" and "A".       |
+| `{series-year}`      | The year the series started.                                                   |
+| `{store-date}`       | The issue store date in `yyyy-mm-dd` format.                                   |
+| `{store-day}`        | The day from the issue store date.                                             |
+| `{store-month}`      | The month from the issue store date.                                           |
+| `{store-year}`       | The year from the issue store date.                                            |
+| `{title}`            | The issue title.                                                               |
+| `{upc}`              | The issue's UPC.                                                               |
+| `{volume}`           | The volume of the series.                                                      |
+
+### Format Resolution
+
+When Perdoo needs a series format (for metadata and `{format-short}` naming), it is resolved from these sources in order:
+
+1. The `-F` / `--format` CLI flag.
+2. The format already stored in the archive's metadata (preserved across syncs).
+3. Format keywords in the filename or its directory path (e.g. `[TPB]`, `Omnibus`, `Deluxe`), confirmed interactively when a prompt is available.
+4. The format fetched from the metadata service: Metron's series type, or Mylar3-style detection from ComicVine description text (checked volume-first, whole text for decks and the first 60 characters for descriptions).
+5. The Mylar3 One-Shot rule: a single-issue volume whose start year is before the current year.
+6. An interactive prompt. A filename-based guess is pre-selected for confirmation; when nothing is known the first choice is shown. Non-interactive runs use the best guess from steps 3-5.
+
+Steps 4 and 5 are applied automatically without prompting, and a filename/directory tag always wins over service-detected text.
 
 ## Settings
 
@@ -330,6 +344,7 @@ The pattern used to generate output file names and directories. See [File Renami
 The order in which services are queried for metadata. Perdoo uses the first service that returns a result. Defaults to `["Metron", "Comicvine"]`.
 
 Supported services:
+
 - `Metron`
 - `Comicvine`
 
