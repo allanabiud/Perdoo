@@ -109,3 +109,50 @@ class TestRenameEntryCleanup:
         assert old_dir.exists()
         assert (old_dir / "untagged.cbz").exists()
         assert len(list(output.glob("*.cbz"))) == 1
+
+    def test_target_directory_is_removed_when_it_is_inside_output(self, tmp_path: Path) -> None:
+        output = tmp_path / "library"
+        source = output / "Old Folder"
+        source.mkdir(parents=True)
+        entry = source / "old-name.cbz"
+        with zipfile.ZipFile(entry, "w") as zf:
+            zf.writestr("page01.jpg", b"fake-image-bytes")
+            zf.writestr("ComicInfo.xml", COMIC_INFO_XML)
+
+        settings = Settings(
+            output=Output(
+                folder=output,
+                comic_info=ComicInfo(handle_pages=False),
+                naming=Naming(pattern="{series-name} #{number}", seperator=" "),
+            )
+        )
+
+        rename_entry(entry=entry, target=source, settings=settings)
+
+        assert not source.exists()
+        assert output.exists()
+        assert len(list(output.glob("*.cbz"))) == 1
+
+    def test_dry_run_does_not_move_or_modify_archive(self, tmp_path: Path) -> None:
+        source = tmp_path / "source"
+        source.mkdir()
+        entry = source / "old-name.cbz"
+        with zipfile.ZipFile(entry, "w") as zf:
+            zf.writestr("page01.jpg", b"fake-image-bytes")
+            zf.writestr("ComicInfo.xml", COMIC_INFO_XML)
+        original = entry.read_bytes()
+
+        output = tmp_path / "library"
+        settings = Settings(
+            output=Output(
+                folder=output,
+                comic_info=ComicInfo(handle_pages=False),
+                naming=Naming(pattern="{series-name} #{number}", seperator=" "),
+            )
+        )
+
+        rename_entry(entry=entry, target=source, settings=settings, dry_run=True)
+
+        assert entry.exists()
+        assert entry.read_bytes() == original
+        assert not output.exists()

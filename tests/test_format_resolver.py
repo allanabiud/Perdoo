@@ -21,6 +21,11 @@ class TestDetectFormatFromDescription:
             ("An oversized omnibus edition", None, (Format.OMNIBUS, "OB")),
             ("The Walking Dead Compendium", None, (Format.OMNIBUS, "OB")),
             ("A standalone one-shot special", None, (Format.ONE_SHOT, "One-Shot")),
+            (
+                "A new collection of stories. Collects Absolute Batman #1-6.",
+                None,
+                (Format.TRADE_PAPERBACK, "TPB"),
+            ),
             ("Now in print", None, (None, None)),
             ("", None, (None, None)),
             (None, "A digital-first", (Format.DIGITAL_CHAPTER, "Digital")),
@@ -31,6 +36,7 @@ class TestDetectFormatFromDescription:
             "deck-omnibus",
             "deck-compendium",
             "deck-one-shot",
+            "deck-collects-at-end",
             "deck-print-is-neutral",
             "deck-empty",
             "issue-deck-digital",
@@ -144,6 +150,15 @@ class TestResolveSeriesFormat:
             fetched_format_comic="TPB",
             prompt_if_missing=False,
         ) == (Format.HARDCOVER, "HC")
+
+    def test_existing_single_issue_does_not_block_fetched_format(self) -> None:
+        assert resolve_series_format(
+            series_name="Absolute Batman",
+            filename="Absolute Batman #001 (2025).cbz",
+            existing_format_comic="Single Issue",
+            fetched_format_comic="Trade Paperback",
+            prompt_if_missing=False,
+        ) == (Format.TRADE_PAPERBACK, "TPB")
 
     def test_filename_tag_beats_fetched_description_format(self) -> None:
         assert resolve_series_format(

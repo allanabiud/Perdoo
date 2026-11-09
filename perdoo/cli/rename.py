@@ -1,6 +1,8 @@
 __all__ = ["register"]
 
 import contextlib
+import errno
+import shutil
 from argparse import Namespace, _SubParsersAction
 from collections.abc import Sequence
 from pathlib import Path
@@ -12,6 +14,7 @@ from shortbox import Comic
 from shortbox.errors import ArchiveCapabilityError, UnsupportedArchiveError
 from shortbox.metadata import ComicInfo, MetronInfo
 
+from perdoo.cli._results import RunResult
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
 from perdoo.format_resolver import apply_format_to_metadata, parse_format_str
@@ -48,6 +51,16 @@ def register(subparsers: _SubParsersAction) -> None:
         dest="format",
         metavar="FORMAT",
         help="Force comic format (e.g. TPB, HC, OB, One-Shot, GN, Annual).",
+    )
+    parser.add_argument(
+        "--refresh-pages",
+        action="store_true",
+        help="Reinspect archive pages and refresh page metadata before renaming.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show planned archive renames without modifying archives or directories.",
     )
     parser.add_argument(
         "--generate-help-preview", action=HelpPreviewAction, path="docs/img/perdoo_rename.svg"
@@ -91,9 +104,14 @@ def _cleanup_empty_dirs(start: Path, stop: Path) -> None:
         current = current.parent
 
 
-def rename_entry(
-    entry: Path, target: Path, settings: Settings, cli_format: str | None = None
-) -> None:
+def rename_entry(  # noqa: C901, PLR0912
+    entry: Path,
+    target: Path,
+    settings: Settings,
+    cli_format: str | None = None,
+    refresh_pages: bool = False,
+    dry_run: bool = False,
+) -> str:
     with Comic.open(file=entry) as comic:
         comic_info = None
         metron_info = None
@@ -109,19 +127,23 @@ def rename_entry(
                 apply_format_to_metadata(comic_info, metron_info, fmt_enum, fmt_short)
                 updated = True
 
+        needs_page_refresh = refresh_pages or (
+            comic_info is not None
+            and (not comic_info.pages or not comic_info.page_count)
+        )
         if (
             settings.output.comic_info.handle_pages
+            and needs_page_refresh
             and (comic_info or metron_info)
-            and update_comic_pages_metadata(
+        ):
+            updated = update_comic_pages_metadata(
                 comic=comic,
                 comic_info=comic_info,
                 metron_info=metron_info,
                 image_extensions=settings.output.image_extensions,
             )
-        ):
-            updated = True
 
-        if updated:
+        if updated and not dry_run:
             if comic_info:
                 comic.set_metadata(comic_info)
             if metron_info:
@@ -132,27 +154,43 @@ def rename_entry(
         )
         if not new_file:
             CONSOLE.print(f"'{entry.name}' has no recognised metadata, skipping")
-            return
+            return "skipped"
         new_relative = new_file.relative_to(settings.output.folder.resolve())
         if comic.file != new_file and new_file.exists():
             CONSOLE.print(f"'{new_relative}' already exists, skipping")
-            return
-        rename_comic(comic=comic, image_exts=settings.output.image_extensions)
+            return "skipped"
+        if not dry_run:
+            rename_comic(comic=comic, image_exts=settings.output.image_extensions)
     if new_file.exists():
-        return
-    new_file.parent.mkdir(parents=True, exist_ok=True)
+        return "skipped"
     old_relative = entry.relative_to(target) if target.is_dir() else entry.name
+    if dry_run:
+        CONSOLE.print(f"Would rename '{old_relative}' to '{new_relative}'")
+        return "planned"
+    new_file.parent.mkdir(parents=True, exist_ok=True)
     CONSOLE.print(f"'{old_relative}' renamed to '{new_relative}'")
-    entry.rename(new_file)
-    # When target is a single file the stop path can never appear in
-    # entry.parent's parents, so this is a no-op outside directory targets.
-    _cleanup_empty_dirs(start=entry.parent, stop=target)
+    try:
+        entry.rename(new_file)
+    except OSError as err:
+        if err.errno != errno.EXDEV:
+            raise
+        shutil.move(str(entry), str(new_file))
+    # Preserve the library root, but remove an emptied source directory when
+    # the target is inside that root. For external targets, preserve the target
+    # directory and only clean its emptied children.
+    output_folder = settings.output.folder.resolve()
+    cleanup_stop = output_folder if output_folder in target.parents else target
+    _cleanup_empty_dirs(start=entry.parent, stop=cleanup_stop)
+    return "moved"
 
 
-def run(args: Namespace) -> None:
+def run(args: Namespace) -> RunResult:
     settings = Settings.load().save()
+    result = RunResult(stage="rename")
 
     files = list_files(args.target) if args.target.is_dir() else [args.target]
+    if getattr(args, "resume_paths", None):
+        files = [file for file in files if file.resolve() in args.resume_paths]
     if args.ignore:
         ignore_ext = [f".{x}" for x in args.ignore]
         files = [x for x in files if x.suffix not in ignore_ext]
@@ -167,16 +205,28 @@ def run(args: Namespace) -> None:
 
     with progress:
         for entry in progress.track(files, description="Renaming comics"):
+            result.processed += 1
             try:
-                rename_entry(
+                status = rename_entry(
                     entry=entry,
                     target=args.target,
                     settings=settings,
                     cli_format=getattr(args, "format", None),
+                    refresh_pages=getattr(args, "refresh_pages", False),
+                    dry_run=getattr(args, "dry_run", False),
                 )
+                if status == "planned":
+                    result.planned += 1
+                elif status == "moved":
+                    result.succeeded += 1
+                else:
+                    result.skipped += 1
             except UnsupportedArchiveError:
+                result.skipped += 1
                 CONSOLE.print(f"'{entry.name}' is not a supported archive, skipping")
             except Exception as err:  # noqa: BLE001
+                result.add_failure(entry, err)
                 CONSOLE.print(
                     f"Failed to rename '{entry.name}': {err}", style="logging.level.error"
                 )
+    return result

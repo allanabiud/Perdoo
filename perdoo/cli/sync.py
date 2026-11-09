@@ -9,14 +9,19 @@ from shortbox import Comic
 from shortbox.errors import ArchiveCapabilityError, MetadataValidationError, UnsupportedArchiveError
 from shortbox.metadata import ComicInfo, MetronInfo
 from shortbox.metadata.comic_info import AgeRating as ComicInfoAgeRating, Page, PageType
-from shortbox.metadata.metron_info import AgeRating as MetronInfoAgeRating, Format
+from shortbox.metadata.metron_info import (
+    AgeRating as MetronInfoAgeRating,
+    Format,
+    InformationSource,
+)
 
+from perdoo.cli._results import RunResult
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
 from perdoo.format_resolver import apply_format_to_metadata, parse_format_str, resolve_series_format
 from perdoo.pages import update_comic_pages_metadata
 from perdoo.services import Comicvine, Metron, Search, Service
-from perdoo.services._models import get_comic_info_note_modified
+from perdoo.services._models import get_comic_info_note_id, get_comic_info_note_modified
 from perdoo.settings import Service as ServiceOption, Services, Settings
 from perdoo.utils import list_files
 
@@ -54,6 +59,11 @@ def register(subparsers: _SubParsersAction) -> None:
         dest="format",
         metavar="FORMAT",
         help="Force comic format (e.g. TPB, HC, OB, One-Shot, GN, Annual).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Fetch and resolve metadata without writing archives.",
     )
     parser.add_argument(
         "--generate-help-preview", action=HelpPreviewAction, path="docs/img/perdoo_sync.svg"
@@ -121,6 +131,12 @@ def _merge_comic_info(existing: ComicInfo | None, fetched: ComicInfo) -> None:
 
     # Notes: merge - keep the fetched service ID tag but also preserve any existing notes content
     if existing.notes and fetched.notes:
+        for source in (InformationSource.COMIC_VINE, InformationSource.METRON):
+            if get_comic_info_note_id(existing.notes, source) == get_comic_info_note_id(
+                fetched.notes, source
+            ) and get_comic_info_note_id(existing.notes, source) is not None:
+                fetched.notes = existing.notes
+                break
         if fetched.notes not in existing.notes:
             fetched.notes = f"{existing.notes}\n{fetched.notes}"
         # else fetched notes are already contained in existing, use fetched as-is (fresher ID)
@@ -180,7 +196,9 @@ def sync_comic(
     cli_format: str | None = None,
     handle_pages: bool = True,
     image_extensions: Sequence[str] = (".png", ".jpg", ".jpeg", ".webp", ".jxl"),
-) -> None:
+    series_cache: dict[tuple[int, int | None, str | None], object | None] | None = None,
+    dry_run: bool = False,
+) -> str:
     try:
         metron_info = comic.get_metadata(MetronInfo)
     except MetadataValidationError as err:
@@ -196,7 +214,7 @@ def sync_comic(
             f"'{comic.file.name}' was synced within the last {days} days; skipping. Pass -f / --force to re-sync.",
             style="dim",
         )
-        return
+        return "skipped"
     query = Search.build(comic=comic)
     try:
         found = False
@@ -223,22 +241,28 @@ def sync_comic(
                             try:
                                 cv_id = getattr(query.series, "comicvine", None)
                                 m_series = None
+                                cache_key = (id(other_svc), cv_id, query.series.name)
+                                if series_cache is not None and cache_key in series_cache:
+                                    m_series = series_cache[cache_key]
                                 if cv_id and hasattr(other_svc.session, "series_list"):
-                                    m_series_list = other_svc.session.series_list(
-                                        params={"cv_id": cv_id}
-                                    )
-                                    if m_series_list:
-                                        m_series = m_series_list[0]
+                                    if m_series is None:
+                                        m_series_list = other_svc.session.series_list(
+                                            params={"cv_id": cv_id}
+                                        )
+                                        if m_series_list:
+                                            m_series = m_series_list[0]
                                 if (
                                     not m_series
                                     and query.series.name
                                     and hasattr(other_svc.session, "series_list")
-                                ):
+                                ) and (series_cache is None or cache_key not in series_cache):
                                     m_series_list = other_svc.session.series_list(
                                         params={"name": query.series.name}
                                     )
                                     if m_series_list:
                                         m_series = m_series_list[0]
+                                if series_cache is not None:
+                                    series_cache[cache_key] = m_series
                                 if m_series and getattr(m_series, "series_type", None):
                                     fmt_enum, fmt_short = parse_format_str(
                                         m_series.series_type.name
@@ -291,39 +315,53 @@ def sync_comic(
                 _merge_comic_info(comic_info, result.comic_info)
                 _merge_metron_info(metron_info, result.metron_info)
 
-                with CONSOLE.status("Writing ComicInfo.xml to archive"):
-                    comic.set_metadata(result.comic_info)
-                with CONSOLE.status("Writing MetronInfo.xml to archive"):
-                    comic.set_metadata(result.metron_info)
+                if not dry_run and (
+                    comic_info is None or result.comic_info != comic_info
+                ):
+                    with CONSOLE.status("Writing ComicInfo.xml to archive"):
+                        comic.set_metadata(result.comic_info)
+                if not dry_run and (
+                    metron_info is None or result.metron_info != metron_info
+                ):
+                    with CONSOLE.status("Writing MetronInfo.xml to archive"):
+                        comic.set_metadata(result.metron_info)
                 break
         if not found:
             CONSOLE.print(
                 f"No metadata found for '{comic.file.name}'", style="logging.level.warning"
             )
+            return "skipped"
+        return "synced"
     except ArchiveCapabilityError as err:
         CONSOLE.print(
             f"{err}: Consider converting to another format first", style="logging.level.warning"
         )
+        return "skipped"
 
 
-def run(args: Namespace) -> None:
+def run(args: Namespace) -> RunResult:
     settings = Settings.load().save()
+    result = RunResult(stage="sync")
     services = build_services(
         services=settings.services, cover_hash_distance=settings.sync.cover_hash_distance
     )
     if not services:
         CONSOLE.print("No services configured", style="logging.level.error")
-        return
+        return result
 
     files = list_files(args.target) if args.target.is_dir() else [args.target]
+    if getattr(args, "resume_paths", None):
+        files = [file for file in files if file.resolve() in args.resume_paths]
     if args.ignore:
         ignore_ext = [f".{x}" for x in args.ignore]
         files = [x for x in files if x.suffix not in ignore_ext]
 
+    series_cache: dict[tuple[int, int | None, str | None], object | None] = {}
     for entry in files:
+        result.processed += 1
         try:
             with Comic.open(file=entry) as comic:
-                sync_comic(
+                status = sync_comic(
                     comic=comic,
                     services=services,
                     days=settings.sync.days,
@@ -331,6 +369,19 @@ def run(args: Namespace) -> None:
                     cli_format=getattr(args, "format", None),
                     handle_pages=settings.output.comic_info.handle_pages,
                     image_extensions=settings.output.image_extensions,
+                    series_cache=series_cache,
+                    dry_run=getattr(args, "dry_run", False),
                 )
+                if status == "synced":
+                    result.succeeded += 1
+                else:
+                    result.skipped += 1
         except UnsupportedArchiveError:
-            pass
+            result.skipped += 1
+        except Exception as err:  # noqa: BLE001
+            result.add_failure(entry, err)
+            CONSOLE.print(
+                f"Failed to sync [cyan]{entry.name}[/cyan]: {err}",
+                style="logging.level.error",
+            )
+    return result

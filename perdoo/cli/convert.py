@@ -13,6 +13,7 @@ from shortbox import Comic
 from shortbox.archives import Archive, TarArchive, ZipArchive
 from shortbox.errors import UnsupportedArchiveError
 
+from perdoo.cli._results import RunResult
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
 from perdoo.settings import Settings
@@ -46,6 +47,11 @@ def register(subparsers: _SubParsersAction) -> None:
         type=int,
         default=None,
         help="Number of parallel worker threads. Defaults to output.webp-jobs in settings.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Inspect archives without converting them.",
     )
     parser.add_argument(
         "--generate-help-preview", action=HelpPreviewAction, path="docs/img/perdoo_convert.svg"
@@ -149,23 +155,36 @@ def _convert_with_7z(entry: Path) -> bool:
         return True
 
 
-def _convert_single(entry: Path, target_format: type[Archive]) -> None:
+def _convert_single(
+    entry: Path, target_format: type[Archive], dry_run: bool = False
+) -> str:
     """Convert a single comic archive. Intended to be submitted to an executor."""
+    if entry.suffix.lower() == target_format.extension.lower():
+        if dry_run:
+            CONSOLE.print(f"Already {target_format.__name__}: [cyan]{entry.name}[/cyan]")
+        return "skipped"
+    if dry_run:
+        CONSOLE.print(f"Would convert [cyan]{entry.name}[/cyan] to {target_format.__name__}")
+        return "planned"
     try:
         with Comic.open(file=entry) as comic:
             comic.convert(
                 archive_type=target_format, delete_original=True, raise_on_existing=False
             )
+        return "converted"
     except UnsupportedArchiveError:
-        _convert_with_7z(entry=entry)
+        return "converted" if _convert_with_7z(entry=entry) else "skipped"
 
 
-def run(args: Namespace) -> None:
+def run(args: Namespace) -> RunResult:
     settings = Settings.load().save()
+    result = RunResult(stage="convert")
 
     jobs = args.jobs if getattr(args, "jobs", None) is not None else settings.output.webp_jobs
     target_format = determine_format(format_=settings.output.format)
     files = list_files(args.target) if args.target.is_dir() else [args.target]
+    if getattr(args, "resume_paths", None):
+        files = [file for file in files if file.resolve() in args.resume_paths]
     if args.ignore:
         ignore_ext = [f".{x}" for x in args.ignore]
         files = [x for x in files if x.suffix not in ignore_ext]
@@ -182,16 +201,27 @@ def run(args: Namespace) -> None:
         task_id = progress.add_task("Converting comics", total=len(files))
         with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
             futures = {
-                executor.submit(_convert_single, entry, target_format): entry
+                executor.submit(
+                    _convert_single, entry, target_format, getattr(args, "dry_run", False)
+                ): entry
                 for entry in files
             }
             for future in concurrent.futures.as_completed(futures):
                 entry = futures[future]
+                result.processed += 1
                 try:
-                    future.result()
-                except Exception:  # noqa: BLE001
+                    status = future.result()
+                    if status == "planned":
+                        result.planned += 1
+                    elif status == "skipped":
+                        result.skipped += 1
+                    else:
+                        result.succeeded += 1
+                except Exception as err:  # noqa: BLE001
+                    result.add_failure(entry, err)
                     CONSOLE.print(
-                        f"Failed to convert [cyan]{entry.name}[/cyan]",
+                        f"Failed to convert [cyan]{entry.name}[/cyan]: {err}",
                         style="logging.level.error",
                     )
                 progress.advance(task_id)
+    return result

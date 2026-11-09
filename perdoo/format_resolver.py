@@ -101,6 +101,10 @@ def _format_from_deck(deck: str) -> tuple[Format | None, str | None]:  # noqa: P
         return Format.DIGITAL_CHAPTER, "Digital"
     if re.search(r"\bpaperback\b", text):
         return Format.TRADE_PAPERBACK, "TPB"
+    if re.search(r"\bcollect(?:s|ed|ing)?\b", text) and re.search(
+        r"(?:#\s*\d+|issues?\b|vol(?:ume)?\b|stories?\b)", text
+    ):
+        return Format.TRADE_PAPERBACK, "TPB"
     if re.search(r"\bgraphic\s*novel\b", text):
         return Format.GRAPHIC_NOVEL, "GN"
     if re.search(r"\bhardcover\b", text):
@@ -188,7 +192,9 @@ def _fetched_format(
     if fetched_format_metron and fetched_format_metron != Format.SINGLE_ISSUE:
         return fetched_format_metron, fetched_format_metron.value
     if fetched_format_comic:
-        return parse_format_str(fetched_format_comic)
+        fmt, short = parse_format_str(fetched_format_comic)
+        if fmt != Format.SINGLE_ISSUE:
+            return fmt, short
     return None, None
 
 
@@ -265,7 +271,7 @@ def resolve_series_format(
         return existing_format_metron, existing_format_metron.value
     if existing_format_comic:
         fmt, short = parse_format_str(existing_format_comic)
-        if fmt or short:
+        if fmt != Format.SINGLE_ISSUE and (fmt or short):
             return fmt, short
 
     # 3. Detect format from filename / directory path heuristics

@@ -59,6 +59,43 @@ This repository is an enhanced fork of [Buried-In-Code/Perdoo](https://github.co
 
 ## Usage
 
+### Quick Start
+
+1. Configure your ComicVine and/or Metron credentials in
+   `~/.config/perdoo/settings.toml`. Run `perdoo settings` to inspect the
+   current settings and defaults.
+2. Preview a new batch before changing anything:
+
+   ```console
+   perdoo pipeline ~/Downloads/Comics/ --dry-run
+   ```
+
+3. Run the pipeline when the preview looks correct:
+
+   ```console
+   perdoo pipeline ~/Downloads/Comics/
+   ```
+
+The pipeline converts archives, removes unwanted files, optionally converts
+pages to WebP, synchronises metadata, and renames the results. Use
+`--force --dry-run` when you want the preview to fetch metadata again even for
+archives synchronised recently.
+
+For a large batch, save failures so they can be retried later:
+
+```console
+perdoo pipeline ~/Downloads/Comics/ --failure-manifest failures.json
+perdoo pipeline ~/Downloads/Comics/ --resume failures.json
+```
+
+If Perdoo cannot determine a collected edition's format, force it explicitly:
+
+```console
+perdoo pipeline ~/Downloads/Comics/ --format TPB
+```
+
+The format is then available to the naming pattern and stored metadata.
+
 ### Ingest Pipeline
 
 The `pipeline` command runs the full ingestion workflow: converting archives, cleaning unwanted files, converting images to WebP (optional), fetching metadata, and renaming.
@@ -104,6 +141,22 @@ perdoo sync ~/Downloads/Comics/
 perdoo sync ~/Media/Comics/Marvel/ -F OB -f
 ```
 
+### Configured Library Actions
+
+The `library` command runs an action against the folder configured in
+`output.folder`, so an explicit library path is not required:
+
+```console
+perdoo library pipeline --dry-run
+perdoo library sync
+perdoo library rename --dry-run
+perdoo library clean
+```
+
+The available actions are `pipeline`, `sync`, `rename`, and `clean`. Use
+`perdoo library pipeline` for the normal end-to-end workflow on your configured
+library.
+
 ### File Renaming
 
 Rename and organize archives using metadata according to your configured pattern.
@@ -112,6 +165,13 @@ Rename and organize archives using metadata according to your configured pattern
 perdoo rename ~/Downloads/Comics/
 perdoo rename ~/Media/Comics/ -F TPB
 ```
+
+Use `--dry-run` to preview moves. Perdoo creates destination folders as needed
+and removes empty source subfolders inside the library after a successful
+rename; it never removes the configured library root.
+
+If page metadata is incomplete, add `--refresh-pages` to inspect archive pages
+again before renaming.
 
 ### Archive Inspection
 
