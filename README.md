@@ -1,70 +1,56 @@
-# Perdoo (Enhanced Fork)
+# Perdoo
 
-[![GitHub Repo](https://img.shields.io/badge/GitHub-allanabiud%2FPerdoo-blue?logo=github&style=flat-square)](https://github.com/allanabiud/Perdoo)
+[![GitHub - allanabiud/Perdoo](https://img.shields.io/badge/GitHub-allanabiud%2FPerdoo-blue?logo=github&style=flat-square)](https://github.com/allanabiud/Perdoo)
 [![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12%20%7C%203.13%20%7C%203.14-blue.svg?logo=python&style=flat-square)](https://www.python.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![prek](https://img.shields.io/badge/prek-enabled-informational?logo=prek&style=flat-square)](https://github.com/j178/prek)
+[![Ruff](https://img.shields.io/badge/ruff-enabled-informational?logo=ruff&style=flat-square)](https://github.com/astral-sh/ruff)
+[![Ty](https://img.shields.io/badge/ty-enabled-informational?logo=ruff&style=flat-square)](https://github.com/astral-sh/ty)
 
-> **Notice:** This repository is an enhanced fork of the original [Buried-In-Code/Perdoo](https://github.com/Buried-In-Code/Perdoo) with native WebP batch conversion, on-demand format forcing, interactive format prompts, archive page counting, and `{format-short}` naming support.
+Perdoo helps organise comic collections using metadata stored within comic archives.
 
-Perdoo organizes digital comic collections using metadata stored directly within comic archives. It standardizes archives into consistent CBZ files, removes OS clutter, retrieves rich metadata from ComicVine and Metron, and sorts books into a clean publisher/series directory structure.
+It standardises digital comics into a consistent format and can add or update metadata using supported services.
 
----
+This repository is an enhanced fork of [Buried-In-Code/Perdoo](https://github.com/Buried-In-Code/Perdoo) adding native WebP conversion, on-demand format forcing, interactive format prompts, archive image page counting, and `{format-short}` naming support.
 
-## Fork Features & Enhancements
+## Fork Enhancements
 
-- 🚀 **Native WebP Conversion (`perdoo webp`)**:
-  - High-performance parallel image compression using `cwebp` (with automatic Pillow fallback).
-  - Instant 7z pre-inspection: skips archives that are already 100% WebP CBZ in milliseconds without extracting.
-  - Automatically strips OS junk (`.DS_Store`, `__MACOSX`, `Thumbs.db`, `.desktop.ini`).
-  - Atomic archive replacement with zip integrity verification.
-- 🏷️ **On-Demand Format Forcing (`-F` / `--format`)**:
-  - Force publication formats on the fly (`TPB`, `HC`, `OB`, `One-Shot`, `GN`, `Annual`) across `sync`, `rename`, and `pipeline`.
-  - When metadata lacks format information (such as ComicVine), Perdoo interactively prompts you to choose the format.
-  - Automatically writes the resolved format to both `ComicInfo.xml` and `MetronInfo.xml`.
-- 📁 **`{format-short}` Naming Key**:
-  - Use `{format-short}` in folder and file naming patterns (e.g. `[TPB]`, `[HC]`, `[OB]`, `[One-Shot]`, `[GN]`).
-- 📄 **Archive Page Counting**:
-  - Automatically counts archive images and populates `page_count` and the `Pages` list in `ComicInfo.xml` and `MetronInfo.xml`.
-- 🔄 **Unified Ingestion Pipeline (`perdoo pipeline`)**:
-  - Convert to CBZ, compress to WebP, clean junk, fetch metadata, and rename in one command:
-    ```console
-    perdoo pipeline ~/Downloads/Comics/ -F TPB --webp
-    ```
-- ⚡ **Smart Sync Feedback & Forcing (`-f` / `--force`)**:
-  - Helpful console warnings when archives are skipped due to the recent sync window, and full force re-sync capability.
-
----
+- **Native WebP Conversion (`perdoo webp`)**: Parallel image conversion using `cwebp` (with Pillow fallback). Performs fast 7z archive pre-inspection to skip archives already 100% WebP in milliseconds without extracting. Cleans OS junk files (`.DS_Store`, `__MACOSX`, `Thumbs.db`) automatically and replaces files atomically with archive integrity checking.
+- **On-Demand Format Forcing (`-F` / `--format`)**: Specify a series format on the fly (`TPB`, `HC`, `OB`, `One-Shot`, `GN`, `Annual`) when running `sync`, `rename`, or `pipeline`.
+- **Interactive Format Prompts**: When metadata from services (such as ComicVine) lacks series format details, Perdoo interactively prompts you to choose the format and writes it directly to `ComicInfo.xml` and `MetronInfo.xml`.
+- **Format-Aware Naming (`{format-short}`)**: Adds the `{format-short}` pattern key to generate clean folder and file names (e.g. `[TPB]`, `[HC]`, `[OB]`, `[One-Shot]`).
+- **Archive Page Counting**: Inspects image contents inside the archive and automatically writes accurate `page_count` and page lists into `ComicInfo.xml` and `MetronInfo.xml`.
+- **Pipeline WebP Integration**: Adds `-w` / `--webp` / `--no-webp` flags to `perdoo pipeline` to compress and standardize inbound comics in a single pass.
+- **Smart Sync Feedback**: Provides clear console status when archives are skipped due to the recent sync interval, and allows bypassing it with `-f` / `--force`.
 
 ## Installation
 
-### Via Pipx (Recommended)
+### Pipx
 
-Install directly from GitHub:
+1. Ensure [Pipx](https://pipx.pypa.io/stable/) is installed:
 
-```console
-pipx install git+https://github.com/allanabiud/Perdoo.git --force
-```
+   ```console
+   pipx --version
+   ```
 
-Or install in editable mode for local development:
+2. Install this fork:
 
-```console
-git clone https://github.com/allanabiud/Perdoo.git ~/DEV/Projects/active/perdoo
-pipx install --editable ~/DEV/Projects/active/perdoo --force
-```
+   ```console
+   pipx install git+https://github.com/allanabiud/Perdoo.git --force
+   ```
 
-Verify installation:
+   Or install in editable mode for local development:
 
-```console
-perdoo --version
-perdoo --help
-```
+   ```console
+   git clone https://github.com/allanabiud/Perdoo.git ~/DEV/Projects/active/perdoo
+   pipx install --editable ~/DEV/Projects/active/perdoo --force
+   ```
 
----
+## Usage
 
-## Commands & Usage
+### Ingest Pipeline
 
-### 1. `perdoo pipeline`
-The full ingestion workflow: converts non-CBZ archives, cleans junk files, runs WebP compression (optional), fetches metadata, and renames/moves to the target library.
+The `pipeline` command runs the full ingestion workflow: converting archives, cleaning unwanted files, converting images to WebP (optional), fetching metadata, and renaming.
 
 ```console
 # Full pipeline with WebP conversion and forced format:
@@ -73,39 +59,42 @@ perdoo pipeline ~/Downloads/Comics/ -F TPB --webp
 # Ingest without WebP:
 perdoo pipeline ~/Downloads/Comics/ -F HC
 
-# Force re-sync even if tagged within last 28 days:
+# Force re-sync even if tagged within the last 28 days:
 perdoo pipeline ~/Downloads/Comics/ -f -F OB
 ```
 
-### 2. `perdoo webp`
+### WebP Batch Conversion
+
 Batch compress comic archive images to WebP format.
 
 ```console
 # Convert all comic archives in a directory:
 perdoo webp ~/Downloads/Comics/
 
-# Dry run: check which archives need conversion without touching files:
+# Dry run to inspect which archives need conversion without modifying files:
 perdoo webp -n ~/Media/Comics/
 
 # Custom quality (0-100) and worker thread count:
 perdoo webp ~/Downloads/Comics/ -q 85 -j 8
 
-# Force re-conversion:
+# Force re-conversion of archives already containing WebP:
 perdoo webp ~/Downloads/Comics/ -f
 ```
 
-### 3. `perdoo sync`
+### Metadata Synchronisation
+
 Fetch metadata from ComicVine and/or Metron and write to `ComicInfo.xml` and `MetronInfo.xml`.
 
 ```console
 # Sync metadata for a folder:
 perdoo sync ~/Downloads/Comics/
 
-# Force format and bypass recent sync check:
+# Force format and bypass recent sync interval:
 perdoo sync ~/Media/Comics/Marvel/ -F OB -f
 ```
 
-### 4. `perdoo rename`
+### File Renaming
+
 Rename and organize archives using metadata according to your configured pattern.
 
 ```console
@@ -113,7 +102,8 @@ perdoo rename ~/Downloads/Comics/
 perdoo rename ~/Media/Comics/ -F TPB
 ```
 
-### 5. `perdoo archive`
+### Archive Inspection
+
 Inspect and manipulate internal archive contents and metadata.
 
 ```console
@@ -127,61 +117,109 @@ perdoo archive metron-info "/path/to/comic.cbz"
 perdoo archive tree "/path/to/comic.cbz"
 ```
 
----
+## Supported Formats
 
-## File Renaming and Pattern Keys
+| Format | Input | Output |
+| ------ | :---: | :----: |
+| CB7    |  Yes  |  Yes   |
+| CBR    |  Yes  |  No    |
+| CBT    |  Yes  |  Yes   |
+| CBZ    |  Yes  |  Yes   |
+| PDF    |  Yes  |  No    |
 
-Metadata is taken from `MetronInfo.xml` when available, with `ComicInfo.xml` used as a fallback.
+### Metadata Files
 
-### Recommended Pattern
+Metadata file support is provided by [shortbox](https://codeberg.org/buriedincode/shortbox), which currently supports:
+
+- ComicInfo v2.0 (with field ordering ignored)
+- MetronInfo v1.1
+
+## Services
+
+- [Comicvine](https://comicvine.gamespot.com) using the [Simyan](https://github.com/Metron-Project/Simyan) library.
+- [Metron](https://metron.cloud) using the [Mokkari](https://github.com/Metron-Project/Mokkari) library.
+
+## File Renaming and Organization
+
+Perdoo uses a pattern-based approach for naming and organizing files.
+
+Metadata is taken from MetronInfo when available, with ComicInfo used as a fallback.
+
+The default pattern is:
+
+```text
+{publisher-name}/{series-name}-v{volume}/{format}/{series-name}-v{volume}_#{number:3}
+```
+
+A common pattern with folder-level format tags:
 
 ```text
 {publisher-name}/{series-name}[ ({series-year})][ \[{format-short}\]]/{series-name}[ \[{format-short}\]][ #{number:3}][ ({cover-year})]
 ```
 
-**Results in**:
+### Pattern Options
+
+#### Padding
+
+Integer and integer-like fields, such as `{number}`, support optional zero-padding by specifying a length.
+
+For example: `{number:3}` produces `012` from `12`
+
+#### Sanitization
+
+Metadata values are sanitized to remove characters outside:
+
 ```text
-DC Comics/
-└── Batman (2012) [TPB]/
-    ├── Batman [TPB] #001 (2012).cbz
-    └── Batman [TPB] #002 (2013).cbz
-Marvel/
-└── Daredevil by Chip Zdarsky Omnibus (2024) [OB]/
-    ├── Daredevil by Chip Zdarsky Omnibus [OB] #001 (2024).cbz
-    └── Daredevil by Chip Zdarsky Omnibus [OB] #002 (2024).cbz
+0-9a-zA-Z&!-
 ```
+
+Custom characters can still be added directly to patterns.
 
 ### Pattern Keys
 
 | Pattern Key          | Description                                                              |
 | -------------------- | ------------------------------------------------------------------------ |
-| `{format-short}`     | **(Fork Feature)** Short format abbreviation: `TPB`, `HC`, `OB`, `One-Shot`, `GN`, `Annual`. |
-| `{format}`           | Full format name of the series (e.g. `Trade Paperback`, `Hardcover`).   |
-| `{publisher-name}`   | The full name of the publisher (e.g. `DC Comics`, `Marvel`, `Image`).    |
+| `{cover-date}`       | The issue cover date in `yyyy-mm-dd` format.                             |
+| `{cover-day}`        | The day from the issue cover date.                                       |
+| `{cover-month}`      | The month from the issue cover date.                                     |
+| `{cover-year}`       | The year from the issue cover date.                                      |
+| `{format}`           | The full format name of the series (e.g. `Trade Paperback`, `Hardcover`).|
+| `{format-short}`     | The short format abbreviation (`TPB`, `HC`, `OB`, `One-Shot`, `GN`, `Annual`). |
+| `{id}`               | The primary ID of the issue.                                             |
+| `{imprint}`          | The publisher's imprint.                                                 |
+| `{isbn}`             | The issue's ISBN.                                                        |
+| `{issue-count}`      | The total number of issues in the series.                                |
+| `{lang}`             | The issue's language.                                                    |
+| `{number}`           | The issue number.                                                        |
+| `{publisher-id}`     | The publisher's unique ID.                                               |
+| `{publisher-name}`   | The full name of the publisher.                                          |
+| `{series-id}`        | The series' unique ID.                                                   |
 | `{series-name}`      | The full name of the series.                                             |
-| `{series-year}`      | The year the series began.                                               |
-| `{number}`           | The issue number. Supports zero-padding (e.g. `{number:3}` -> `001`).    |
-| `{cover-year}`       | The publication year from the issue cover date.                          |
-| `{cover-date}`       | Issue cover date in `yyyy-mm-dd` format.                                 |
-| `{volume}`           | Volume number of the series.                                             |
-| `{title}`            | Title of the issue or collection.                                        |
-| `{issue-count}`      | Total number of issues in the series.                                    |
-| `{series-sort-name}` | Sort-friendly series name (omitting leading "The", "A", etc.).            |
+| `{series-sort-name}` | Sort-friendly series name, omitting leading words such as "The" and "A". |
+| `{series-year}`      | The year the series started.                                             |
+| `{store-date}`       | The issue store date in `yyyy-mm-dd` format.                             |
+| `{store-day}`        | The day from the issue store date.                                       |
+| `{store-month}`      | The month from the issue store date.                                     |
+| `{store-year}`       | The year from the issue store date.                                      |
+| `{title}`            | The issue title.                                                         |
+| `{upc}`              | The issue's UPC.                                                         |
+| `{volume}`           | The volume of the series.                                                |
 
----
+## Settings
 
-## Configuration (`settings.toml`)
+Perdoo's settings are stored in:
 
-Perdoo's configuration is stored at:
 ```text
 ~/.config/perdoo/settings.toml
 ```
 
-### Complete Example Configuration
+The file is created automatically on first run.
+
+### Example
 
 ```toml
 [output]
-folder = "/home/allanabiud/Media/Comics"
+folder = "~/.local/share/perdoo/comics"
 format = "cbz"
 image-extensions = [".png", ".jpg", ".jpeg", ".webp", ".jxl"]
 remove-extensions = [".nfo", ".sfv", ".db", ".DS_Store"]
@@ -198,37 +236,103 @@ handle-pages = true
 create = true
 
 [output.naming]
-pattern = "{publisher-name}/{series-name}[ ({series-year})][ \\[{format-short}\\]]/{series-name}[ \\[{format-short}\\]][ #{number:3}][ ({cover-year})]"
 seperator = " "
+pattern = "{publisher-name}/{series-name}[ ({series-year})][ \\[{format-short}\\]]/{series-name}[ \\[{format-short}\\]][ #{number:3}][ ({cover-year})]"
 
 [services]
 order = ["Comicvine", "Metron"]
 
 [services.comicvine]
-api-key = "<YOUR_COMICVINE_API_KEY>"
+api-key = "<Comicvine API Key>"
 
 [services.metron]
-token = "<YOUR_METRON_TOKEN>"
+token = "<Metron Token>"
 
 [sync]
 days = 28
 cover-hash-distance = 10
 ```
 
----
+### Output
 
-## Supported Formats
+#### `output.folder`
 
-| Format | Input | Output |
-| ------ | :---: | :----: |
-| CBZ    |  ✅   |   ✅   |
-| CBR    |  ✅   |   ❌ (converts to CBZ) |
-| CB7    |  ✅   |   ✅   |
-| CBT    |  ✅   |   ✅   |
-| PDF    |  ✅   |   ❌   |
+The folder where output files are stored. Defaults to `~/.local/share/perdoo/comics`.
 
----
+#### `output.format`
+
+The output format used for comic archives. Defaults to `cbz`. See [Supported Formats](#supported-formats) for available formats.
+
+#### `output.image-extensions`
+
+The file extensions Perdoo considers to be images during the clean-up step. Defaults to `[".png", ".jpg", ".jpeg", ".webp", ".jxl"]`.
+
+#### `output.remove-extensions`
+
+The file extensions removed from archives during cleaning. Defaults to `[".nfo", ".sfv", ".db", ".DS_Store"]`.
+
+#### `output.webp`
+
+Whether to run WebP conversion by default during `pipeline`. Defaults to `false`.
+
+#### `output.webp-quality`
+
+Compression quality (0-100) for lossy WebP encoding. Defaults to `80`.
+
+#### `output.webp-lossless`
+
+Whether to use lossless WebP compression. Defaults to `false`.
+
+#### `output.webp-jobs`
+
+Number of worker threads used for parallel page conversion. Defaults to `4`.
+
+### ComicInfo
+
+#### `output.comic-info.create`
+
+Whether to create a `ComicInfo.xml` file in the output archive. Defaults to `true`.
+
+#### `output.comic-info.handle-pages`
+
+Whether to process and write page count and page data in `ComicInfo.xml`. Defaults to `true`.
+
+### MetronInfo
+
+#### `output.metron-info.create`
+
+Whether to create a `MetronInfo.xml` file in the output archive. Defaults to `true`.
+
+### Naming
+
+#### `output.naming.seperator`
+
+The separator used in generated file names. Defaults to `-`. Supported values are `-`, `_`, `.`, and ` ` (space).
+
+#### `output.naming.pattern`
+
+The pattern used to generate output file names and directories. See [File Renaming and Organization](#file-renaming-and-organization) for available pattern fields.
+
+### Services
+
+#### `services.order`
+
+The order in which services are queried for metadata. Perdoo uses the first service that returns a result. Defaults to `["Metron", "Comicvine"]`.
+
+Supported services:
+- `Metron`
+- `Comicvine`
+
+### Sync
+
+#### `sync.days`
+
+The number of days before an archive with existing metadata is synchronised again. Defaults to `28`. Can be overridden with `-f` / `--force`.
+
+#### `sync.cover-hash-distance`
+
+The maximum Hamming distance accepted when matching an archive cover. Defaults to `10`. Supported values range from `0` to `64`.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE). Original project copyright [BuriedInCode](https://github.com/Buried-In-Code/Perdoo).
+This project is licensed under the [MIT License](LICENSE).
