@@ -1,5 +1,6 @@
 __all__ = ["register"]
 
+import contextlib
 from argparse import Namespace, _SubParsersAction
 from collections.abc import Sequence
 from pathlib import Path
@@ -10,7 +11,6 @@ from rich_argparse import HelpPreviewAction
 from shortbox import Comic
 from shortbox.errors import ArchiveCapabilityError, UnsupportedArchiveError
 from shortbox.metadata import ComicInfo, MetronInfo
-from shortbox.metadata.comic_info import Page, PageType
 
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
@@ -73,20 +73,34 @@ def rename_comic(comic: Comic, image_exts: Sequence[str]) -> None:
         )
 
 
+def _cleanup_empty_dirs(start: Path, stop: Path) -> None:
+    """Remove directories left empty by a move, walking up from `start` towards `stop`.
+
+    Stops at `stop` (exclusive) or at the first directory that still has content,
+    so directories outside the requested target are never touched.
+    """
+    current = start
+    while current != stop and stop in current.parents:
+        try:
+            if any(current.iterdir()):
+                return
+            current.rmdir()
+        except OSError:
+            return
+        CONSOLE.print(f"Removed empty directory '{current.relative_to(stop)}'", style="dim")
+        current = current.parent
+
+
 def rename_entry(
     entry: Path, target: Path, settings: Settings, cli_format: str | None = None
 ) -> None:
     with Comic.open(file=entry) as comic:
         comic_info = None
         metron_info = None
-        try:
+        with contextlib.suppress(Exception):
             comic_info = comic.get_metadata(ComicInfo)
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             metron_info = comic.get_metadata(MetronInfo)
-        except Exception:
-            pass
 
         updated = False
         if cli_format:
@@ -95,14 +109,17 @@ def rename_entry(
                 apply_format_to_metadata(comic_info, metron_info, fmt_enum, fmt_short)
                 updated = True
 
-        if settings.output.comic_info.handle_pages and (comic_info or metron_info):
-            if update_comic_pages_metadata(
+        if (
+            settings.output.comic_info.handle_pages
+            and (comic_info or metron_info)
+            and update_comic_pages_metadata(
                 comic=comic,
                 comic_info=comic_info,
                 metron_info=metron_info,
                 image_extensions=settings.output.image_extensions,
-            ):
-                updated = True
+            )
+        ):
+            updated = True
 
         if updated:
             if comic_info:
@@ -127,6 +144,9 @@ def rename_entry(
     old_relative = entry.relative_to(target) if target.is_dir() else entry.name
     CONSOLE.print(f"'{old_relative}' renamed to '{new_relative}'")
     entry.rename(new_file)
+    # When target is a single file the stop path can never appear in
+    # entry.parent's parents, so this is a no-op outside directory targets.
+    _cleanup_empty_dirs(start=entry.parent, stop=target)
 
 
 def run(args: Namespace) -> None:
