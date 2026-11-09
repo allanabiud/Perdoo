@@ -16,6 +16,7 @@ from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing
 from perdoo.console import CONSOLE
 from perdoo.format_resolver import apply_format_to_metadata, parse_format_str
 from perdoo.naming import build_file
+from perdoo.pages import update_comic_pages_metadata
 from perdoo.settings import Settings
 from perdoo.utils import list_files
 
@@ -95,30 +96,13 @@ def rename_entry(
                 updated = True
 
         if settings.output.comic_info.handle_pages and (comic_info or metron_info):
-            filenames = comic.list_filenames()
-            image_files = [
-                f
-                for f in filenames
-                if not f.startswith("__MACOSX/")
-                and Path(f).name not in {"thumbs.db", ".DS_Store"}
-                and Path(f).suffix.lower() in settings.output.image_extensions
-            ]
-            page_count = len(image_files)
-            if page_count > 0:
-                if comic_info and (comic_info.page_count != page_count or not comic_info.pages):
-                    comic_info.page_count = page_count
-                    if not comic_info.pages:
-                        comic_info.pages = [
-                            Page(
-                                image=i,
-                                type=PageType.FRONT_COVER if i == 0 else PageType.STORY,
-                            )
-                            for i in range(page_count)
-                        ]
-                    updated = True
-                if metron_info and metron_info.page_count != page_count:
-                    metron_info.page_count = page_count
-                    updated = True
+            if update_comic_pages_metadata(
+                comic=comic,
+                comic_info=comic_info,
+                metron_info=metron_info,
+                image_extensions=settings.output.image_extensions,
+            ):
+                updated = True
 
         if updated:
             if comic_info:

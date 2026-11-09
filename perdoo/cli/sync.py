@@ -14,6 +14,7 @@ from shortbox.metadata.comic_info import Page, PageType
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
 from perdoo.format_resolver import apply_format_to_metadata, resolve_series_format
+from perdoo.pages import update_comic_pages_metadata
 from perdoo.services import Comicvine, Metron, Search, Service
 from perdoo.services._models import get_comic_info_note_modified
 from perdoo.settings import Service as ServiceOption, Services, Settings
@@ -114,28 +115,12 @@ def sync_comic(
             if result := svc.fetch(search=query):
                 found = True
                 if handle_pages:
-                    filenames = comic.list_filenames()
-                    image_files = [
-                        f
-                        for f in filenames
-                        if not f.startswith("__MACOSX/")
-                        and Path(f).name not in {"thumbs.db", ".DS_Store"}
-                        and Path(f).suffix.lower() in image_extensions
-                    ]
-                    page_count = len(image_files)
-                    if page_count > 0:
-                        if result.comic_info:
-                            result.comic_info.page_count = page_count
-                            if not result.comic_info.pages:
-                                result.comic_info.pages = [
-                                    Page(
-                                        image=i,
-                                        type=PageType.FRONT_COVER if i == 0 else PageType.STORY,
-                                    )
-                                    for i in range(page_count)
-                                ]
-                        if result.metron_info:
-                            result.metron_info.page_count = page_count
+                    update_comic_pages_metadata(
+                        comic=comic,
+                        comic_info=result.comic_info,
+                        metron_info=result.metron_info,
+                        image_extensions=image_extensions,
+                    )
 
                 series_name = (
                     result.comic_info.series
