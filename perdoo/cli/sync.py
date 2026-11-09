@@ -9,8 +9,8 @@ from rich_argparse import HelpPreviewAction
 from shortbox import Comic
 from shortbox.errors import ArchiveCapabilityError, MetadataValidationError, UnsupportedArchiveError
 from shortbox.metadata import ComicInfo, MetronInfo
-from shortbox.metadata.comic_info import Page, PageType
-from shortbox.metadata.metron_info import Format
+from shortbox.metadata.comic_info import AgeRating as ComicInfoAgeRating, Page, PageType
+from shortbox.metadata.metron_info import AgeRating as MetronInfoAgeRating, Format, Url
 
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
@@ -82,6 +82,79 @@ def should_sync(metron_info: MetronInfo | None, comic_info: ComicInfo | None, da
         age = (datetime.now().astimezone().date() - last_modified.date()).days
         return age >= days
     return True
+
+
+def _merge_comic_info(existing: ComicInfo | None, fetched: ComicInfo) -> ComicInfo:
+    """Preserve user-customized ComicInfo fields that the service did not populate."""
+    if existing is None:
+        return fetched
+
+    # Language: services rarely set this, preserve existing
+    if not fetched.language_iso and existing.language_iso:
+        fetched.language_iso = existing.language_iso
+
+    # Age rating: preserve existing when fetched is UNKNOWN
+    if fetched.age_rating == ComicInfoAgeRating.UNKNOWN and existing.age_rating != ComicInfoAgeRating.UNKNOWN:
+        fetched.age_rating = existing.age_rating
+
+    # Format: preserve existing when fetched is empty
+    if not fetched.format and existing.format:
+        fetched.format = existing.format
+
+    # Scan information: preserve existing
+    if not fetched.scan_information and existing.scan_information:
+        fetched.scan_information = existing.scan_information
+
+    # Notes: merge - keep the fetched service ID tag but also preserve any existing notes content
+    if existing.notes and fetched.notes:
+        if fetched.notes not in existing.notes:
+            fetched.notes = f"{existing.notes}\n{fetched.notes}"
+        # else fetched notes are already contained in existing, use fetched as-is (fresher ID)
+    elif existing.notes and not fetched.notes:
+        fetched.notes = existing.notes
+
+    # Pages: preserve bookmarks and specific page types from existing metadata
+    if existing.pages and fetched.pages:
+        existing_by_idx: dict[int, Page] = {p.image: p for p in existing.pages if p.image is not None}
+        for page in fetched.pages:
+            if page.image is None:
+                continue
+            old = existing_by_idx.get(page.image)
+            if old is None:
+                continue
+            # Preserve bookmark annotations
+            if old.bookmark and not page.bookmark:
+                page.bookmark = old.bookmark
+            # Preserve specific page types when fetched has only generic Story type
+            if (
+                old.type is not None
+                and old.type != PageType.STORY
+                and (page.type is None or page.type == PageType.STORY)
+            ):
+                page.type = old.type
+    elif existing.pages and not fetched.pages:
+        fetched.pages = existing.pages
+
+    return fetched
+
+
+def _merge_metron_info(existing: MetronInfo | None, fetched: MetronInfo) -> MetronInfo:
+    """Preserve user-customized MetronInfo fields that the service did not populate."""
+    if existing is None:
+        return fetched
+
+    # Age rating: preserve existing when fetched is UNKNOWN
+    if fetched.age_rating == MetronInfoAgeRating.UNKNOWN and existing.age_rating != MetronInfoAgeRating.UNKNOWN:
+        fetched.age_rating = existing.age_rating
+
+    # URLs: merge, dedup by value
+    if existing.urls:
+        existing_url_values = {u.value for u in fetched.urls}
+        for url in existing.urls:
+            if url.value not in existing_url_values:
+                fetched.urls.append(url)
+
+    return fetched
 
 
 def sync_comic(
@@ -191,6 +264,10 @@ def sync_comic(
                     apply_format_to_metadata(
                         result.comic_info, result.metron_info, fmt_enum, fmt_short
                     )
+
+                # Merge with existing metadata to preserve user-customized fields
+                result.comic_info = _merge_comic_info(comic_info, result.comic_info)
+                result.metron_info = _merge_metron_info(metron_info, result.metron_info)
 
                 with CONSOLE.status("Writing ComicInfo.xml to archive"):
                     comic.set_metadata(result.comic_info)

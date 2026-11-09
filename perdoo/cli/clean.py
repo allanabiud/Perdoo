@@ -1,5 +1,6 @@
 __all__ = ["register"]
 
+import concurrent.futures
 from argparse import Namespace, _SubParsersAction
 from collections.abc import Sequence
 from pathlib import Path
@@ -37,6 +38,13 @@ def register(subparsers: _SubParsersAction) -> None:
         help="Skip archives with this extension. Repeat to ignore multiple extensions.",
     )
     parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=None,
+        help="Number of parallel worker threads. Defaults to output.webp-jobs in settings.",
+    )
+    parser.add_argument(
         "--generate-help-preview", action=HelpPreviewAction, path="docs/img/perdoo_clean.svg"
     )
     parser.set_defaults(func=run)
@@ -54,9 +62,16 @@ def clean_comic(comic: Comic, remove_exts: Sequence[str]) -> None:
         )
 
 
+def _clean_single(entry: Path, remove_exts: Sequence[str]) -> None:
+    """Clean a single comic archive. Intended to be submitted to an executor."""
+    with Comic.open(file=entry) as comic:
+        clean_comic(comic=comic, remove_exts=remove_exts)
+
+
 def run(args: Namespace) -> None:
     settings = Settings.load().save()
 
+    jobs = args.jobs if getattr(args, "jobs", None) is not None else settings.output.webp_jobs
     files = list_files(args.target) if args.target.is_dir() else [args.target]
     if args.ignore:
         ignore_ext = [f".{x}" for x in args.ignore]
@@ -71,9 +86,21 @@ def run(args: Namespace) -> None:
     )
 
     with progress:
-        for entry in progress.track(files, description="Cleaning comics"):
-            try:
-                with Comic.open(file=entry) as comic:
-                    clean_comic(comic=comic, remove_exts=settings.output.remove_extensions)
-            except UnsupportedArchiveError:
-                pass
+        task_id = progress.add_task("Cleaning comics", total=len(files))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
+            futures = {
+                executor.submit(_clean_single, entry, settings.output.remove_extensions): entry
+                for entry in files
+            }
+            for future in concurrent.futures.as_completed(futures):
+                entry = futures[future]
+                try:
+                    future.result()
+                except UnsupportedArchiveError:
+                    pass
+                except Exception:  # noqa: BLE001
+                    CONSOLE.print(
+                        f"Failed to clean [cyan]{entry.name}[/cyan]",
+                        style="logging.level.error",
+                    )
+                progress.advance(task_id)

@@ -1,6 +1,11 @@
 __all__ = ["register"]
 
+import concurrent.futures
+import shutil
+import subprocess
+import tempfile
 from argparse import Namespace, _SubParsersAction
+from pathlib import Path
 
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn, TextColumn
 from rich_argparse import HelpPreviewAction
@@ -36,6 +41,13 @@ def register(subparsers: _SubParsersAction) -> None:
         help="Skip archives with this extension. Repeat to ignore multiple extensions.",
     )
     parser.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=None,
+        help="Number of parallel worker threads. Defaults to output.webp-jobs in settings.",
+    )
+    parser.add_argument(
         "--generate-help-preview", action=HelpPreviewAction, path="docs/img/perdoo_convert.svg"
     )
     parser.set_defaults(func=run)
@@ -64,9 +76,94 @@ def determine_format(format_: str) -> type[Archive]:
     return output
 
 
+def _convert_with_7z(entry: Path) -> bool:
+    """Extract an unsupported archive with ``7z`` and re-pack it as a ``.cbz``."""
+    seven_zip = shutil.which("7z")
+    if seven_zip is None:
+        CONSOLE.print(
+            f"[bold]7z[/bold] not found; skipping [cyan]{entry.name}[/cyan]",
+            style="logging.level.warning",
+        )
+        return False
+
+    CONSOLE.print(
+        f"Falling back to [bold]7z[/bold] for [cyan]{entry.name}[/cyan]",
+        style="logging.level.info",
+    )
+
+    with tempfile.TemporaryDirectory() as tmp:
+        extract_dir = Path(tmp) / "extracted"
+        extract_dir.mkdir()
+
+        # Extract the archive contents.
+        result = subprocess.run(
+            [seven_zip, "x", f"-o{extract_dir}", "-y", str(entry)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            CONSOLE.print(
+                f"7z extraction failed for [cyan]{entry.name}[/cyan]: {result.stderr.strip()}",
+                style="logging.level.error",
+            )
+            return False
+
+        # Re-pack as a ZIP archive.
+        temp_cbz = Path(tmp) / entry.with_suffix(".cbz").name
+        result = subprocess.run(
+            [seven_zip, "a", "-tzip", str(temp_cbz), "."],
+            cwd=str(extract_dir),
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            CONSOLE.print(
+                f"7z re-pack failed for [cyan]{entry.name}[/cyan]: {result.stderr.strip()}",
+                style="logging.level.error",
+            )
+            return False
+
+        # Verify the newly created archive.
+        result = subprocess.run(
+            [seven_zip, "t", str(temp_cbz)],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode != 0:
+            CONSOLE.print(
+                f"7z integrity check failed for [cyan]{temp_cbz.name}[/cyan]",
+                style="logging.level.error",
+            )
+            return False
+
+        # Replace the original file.
+        output_path = entry.with_suffix(".cbz")
+        shutil.move(str(temp_cbz), str(output_path))
+        if entry.suffix != ".cbz" and entry.exists():
+            entry.unlink()
+
+        CONSOLE.print(
+            f"Converted [cyan]{entry.name}[/cyan] → [green]{output_path.name}[/green]",
+            style="logging.level.info",
+        )
+        return True
+
+
+def _convert_single(entry: Path, target_format: type[Archive]) -> None:
+    """Convert a single comic archive. Intended to be submitted to an executor."""
+    try:
+        with Comic.open(file=entry) as comic:
+            comic.convert(
+                archive_type=target_format, delete_original=True, raise_on_existing=False
+            )
+    except UnsupportedArchiveError:
+        _convert_with_7z(entry=entry)
+
+
 def run(args: Namespace) -> None:
     settings = Settings.load().save()
 
+    jobs = args.jobs if getattr(args, "jobs", None) is not None else settings.output.webp_jobs
     target_format = determine_format(format_=settings.output.format)
     files = list_files(args.target) if args.target.is_dir() else [args.target]
     if args.ignore:
@@ -82,11 +179,19 @@ def run(args: Namespace) -> None:
     )
 
     with progress:
-        for entry in progress.track(files, description="Converting comics"):
-            try:
-                with Comic.open(file=entry) as comic:
-                    comic.convert(
-                        archive_type=target_format, delete_original=True, raise_on_existing=False
+        task_id = progress.add_task("Converting comics", total=len(files))
+        with concurrent.futures.ThreadPoolExecutor(max_workers=jobs) as executor:
+            futures = {
+                executor.submit(_convert_single, entry, target_format): entry
+                for entry in files
+            }
+            for future in concurrent.futures.as_completed(futures):
+                entry = futures[future]
+                try:
+                    future.result()
+                except Exception:  # noqa: BLE001
+                    CONSOLE.print(
+                        f"Failed to convert [cyan]{entry.name}[/cyan]",
+                        style="logging.level.error",
                     )
-            except UnsupportedArchiveError:
-                pass
+                progress.advance(task_id)

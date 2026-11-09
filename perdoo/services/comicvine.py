@@ -1,7 +1,11 @@
 __all__ = ["Comicvine"]
 
 import re
+import time
+from collections.abc import Callable
 from datetime import datetime
+from functools import wraps
+from typing import TypeVar
 
 from natsort import humansorted, ns
 from questionary import Choice, confirm, text
@@ -22,6 +26,46 @@ from perdoo.services._models import (
     SeriesSearch,
     set_comic_info_note_id,
 )
+
+T = TypeVar("T")
+
+_RATE_LIMIT_PATTERNS = re.compile(r"420|429|rate.?limit|too many requests", re.IGNORECASE)
+
+
+def comicvine_rate_limit_retry(
+    max_retries: int = 5, initial_wait: float = 10.0
+) -> Callable[[Callable[..., T]], Callable[..., T]]:
+    """Retry decorator for ComicVine API calls that hit rate limits.
+
+    Catches :class:`ServiceError` whose message indicates a rate-limit response
+    (HTTP 420/429 or ``"rate limit"`` / ``"too many requests"``) and retries with
+    exponential backoff.  Non-rate-limit ``ServiceError``s are re-raised immediately
+    so they can be handled by the existing per-method error handling.
+    """
+
+    def decorator(func: Callable[..., T]) -> Callable[..., T]:
+        @wraps(func)
+        def wrapper(*args, **kwargs) -> T:  # noqa: ANN002, ANN003
+            for attempt in range(max_retries):
+                try:
+                    return func(*args, **kwargs)
+                except ServiceError as err:
+                    if not _RATE_LIMIT_PATTERNS.search(str(err)):
+                        raise
+                    if attempt == max_retries - 1:
+                        raise
+                    wait = initial_wait * (2 ** attempt)
+                    CONSOLE.print(
+                        f"Comicvine rate limited, waiting {wait:.0f} seconds "
+                        f"(attempt {attempt + 1}/{max_retries})...",
+                        style="logging.level.warning",
+                    )
+                    time.sleep(wait)
+            raise AssertionError("Unreachable")
+
+        return wrapper
+
+    return decorator
 
 
 ROLE_NORMALIZATION: dict[str, str] = {
@@ -65,6 +109,7 @@ class Comicvine:
             ratelimit_path=get_cache_home() / "simyan-rates.sqlite",
         )
 
+    @comicvine_rate_limit_retry()
     def _search_series(
         self, name: str | None, volume: int | None, year: int | None, filename: str
     ) -> int | None:
@@ -142,6 +187,7 @@ class Comicvine:
             CONSOLE.print(err, style="logging.level.error")
         return None
 
+    @comicvine_rate_limit_retry()
     def _fetch_series(self, search: SeriesSearch, filename: str) -> Volume | None:
         series_id = search.comicvine or self._search_series(
             name=search.name, volume=search.volume, year=search.year, filename=filename
@@ -159,6 +205,7 @@ class Comicvine:
             return self._fetch_series(search=search, filename=filename)
         return None
 
+    @comicvine_rate_limit_retry()
     def _search_issue(self, series_id: int, number: str | None, filename: str) -> int | None:
         try:
             options = humansorted(
@@ -202,6 +249,7 @@ class Comicvine:
             CONSOLE.print(err, style="logging.level.error")
         return None
 
+    @comicvine_rate_limit_retry()
     def _fetch_issue(self, series_id: int, search: IssueSearch, filename: str) -> Issue | None:
         issue_id = search.comicvine or self._search_issue(
             series_id=series_id, number=search.number, filename=filename
@@ -339,6 +387,7 @@ class Comicvine:
 
         return comic_info
 
+    @comicvine_rate_limit_retry()
     def fetch(self, search: Search) -> MetadataResult | None:
         if not search.series.comicvine and search.issue.comicvine:
             try:
