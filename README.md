@@ -22,6 +22,16 @@ This repository is an enhanced fork of [Buried-In-Code/Perdoo](https://github.co
 - **Archive Page Counting & Double-Page Detection**: Inspects image headers inside the archive to populate accurate `page_count`, pixel dimensions (`ImageWidth`, `ImageHeight`), exact byte sizes (`ImageSize`), and automatic double-page spread detection (`DoublePage="true"`) in `ComicInfo.xml`.
 - **Pipeline WebP Integration**: Adds `-w` / `--webp` / `--no-webp` flags to `perdoo pipeline` to compress and standardize inbound comics in a single pass.
 - **Smart Sync Feedback**: Provides clear console status when archives are skipped due to the recent sync interval, and allows bypassing it with `-f` / `--force`.
+- **Creator Role Normalization**: Automatically maps ComicVine's lowercase role strings (`penciler`, `cover`, `script`) to the correct ComicInfo fields (`Penciller`, `Cover Artist`, `Writer`), preventing silently dropped creator credits.
+- **Date and Count Population**: Fills `Year`, `Month`, `Day`, `Count`, and `Volume` fields in `ComicInfo.xml` from both ComicVine and Metron issue data, using `cover_date` with `store_date` as a fallback.
+- **Rich Synopsis Fallback**: When an issue's `summary` field is empty or very short, falls back to the full `description` field with HTML tags stripped to provide a meaningful summary.
+- **Two-Pass Subtitle Search**: When a series name with subtitles (e.g. "Batman: Court of Owls") returns no ComicVine results, automatically retries with the base title ("Batman").
+- **Smart Filename Format Detection**: Regex-based heuristic detects format keywords (`Omnibus`, `HC`, `TPB`, `Vol.X`, `Deluxe`, `Annual`) from filenames and directory paths, pre-selecting the correct default in interactive prompts.
+- **Hybrid Service Format Merging**: When the primary service (e.g. ComicVine) returns no format data, cross-queries the other configured service (e.g. Metron) for series type information and applies it.
+- **Robust 7z Extraction Fallback**: When Python bindings for RAR or 7-Zip archives are not installed, falls back to the system `7z` command-line tool to extract and re-pack as CBZ.
+- **Custom Metadata Preservation**: During re-sync, preserves user-customized fields that services do not populate: language, age rating, format, scan information, notes (merged with service IDs), and page-level bookmarks and specific page types.
+- **Concurrent Archive Processing**: The `convert` and `clean` commands use a thread pool (`-j` / `--jobs`) to process multiple archives in parallel. Defaults to the `output.webp-jobs` setting.
+- **ComicVine Rate Limit Retry**: Adds exponential backoff retry logic for ComicVine API calls, automatically detecting HTTP 420/429 rate-limit responses and waiting before retrying.
 
 ## Installation
 
@@ -119,13 +129,13 @@ perdoo archive tree "/path/to/comic.cbz"
 
 ## Supported Formats
 
-| Format | Input | Output |
-| ------ | :---: | :----: |
-| CB7    |  Yes  |  Yes   |
-| CBR    |  Yes  |  No    |
-| CBT    |  Yes  |  Yes   |
-| CBZ    |  Yes  |  Yes   |
-| PDF    |  Yes  |  No    |
+| Format | Input | Output | Notes |
+| ------ | :---: | :----: | ----- |
+| CB7    |  Yes  |  Yes   | Falls back to system `7z` if Python bindings missing |
+| CBR    |  Yes  |  No    | Falls back to system `7z` for input conversion |
+| CBT    |  Yes  |  Yes   | |
+| CBZ    |  Yes  |  Yes   | |
+| PDF    |  Yes  |  No    | |
 
 ### Metadata Files
 
