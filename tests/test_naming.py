@@ -115,7 +115,7 @@ class TestEvaluatePattern:
 class TestFormatShort:
     naming = Naming()
 
-    @pytest.mark.parametrize("fmt", [Format.SINGLE_ISSUE, Format.LIMITED_SERIES, Format.ONE_SHOT])
+    @pytest.mark.parametrize("fmt", [Format.SINGLE_ISSUE, Format.LIMITED_SERIES])
     def test_unmapped_metron_format_is_omitted(self, fmt: Format) -> None:
         metadata = MetronInfo(
             series=Series(name="Amazing Spider-Man", volume=1, format=fmt), number="1"

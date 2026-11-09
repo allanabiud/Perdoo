@@ -18,6 +18,7 @@ from simyan.schemas.volume import Volume
 
 from perdoo import get_cache_home
 from perdoo.console import CONSOLE
+from perdoo.format_resolver import apply_format_to_metadata, detect_format_from_description
 from perdoo.services._base import prompt_select
 from perdoo.services._models import (
     IssueSearch,
@@ -54,7 +55,7 @@ def comicvine_rate_limit_retry(
                         raise
                     if attempt == max_retries - 1:
                         raise
-                    wait = initial_wait * (2 ** attempt)
+                    wait = initial_wait * (2**attempt)
                     CONSOLE.print(
                         f"Comicvine rate limited, waiting {wait:.0f} seconds "
                         f"(attempt {attempt + 1}/{max_retries})...",
@@ -406,7 +407,28 @@ class Comicvine:
         if not issue:
             return None
 
-        return MetadataResult(
-            comic_info=self._build_comic_info(series=series, issue=issue),
-            metron_info=self._build_metron_info(series=series, issue=issue),
+        comic_info = self._build_comic_info(series=series, issue=issue)
+        metron_info = self._build_metron_info(series=series, issue=issue)
+
+        # Mylar3-style format detection: ComicVine stores no series format, so
+        # recognise collected editions from descriptors in the description texts.
+        fmt_enum, fmt_short = detect_format_from_description(
+            volume_summary=series.summary,
+            volume_description=series.description,
+            issue_summary=issue.summary,
+            issue_description=issue.description,
         )
+        if fmt_enum or fmt_short:
+            apply_format_to_metadata(
+                comic_info=comic_info,
+                metron_info=metron_info,
+                fmt_enum=fmt_enum,
+                fmt_short=fmt_short,
+            )
+            CONSOLE.print(
+                f"Format {fmt_short} auto-detected for {series.name!r} "
+                "from Comicvine description text",
+                style="dim",
+            )
+
+        return MetadataResult(comic_info=comic_info, metron_info=metron_info)

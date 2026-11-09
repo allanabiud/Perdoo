@@ -3,14 +3,13 @@ __all__ = ["register"]
 from argparse import Namespace, _SubParsersAction
 from collections.abc import Sequence
 from datetime import datetime
-from pathlib import Path
 
 from rich_argparse import HelpPreviewAction
 from shortbox import Comic
 from shortbox.errors import ArchiveCapabilityError, MetadataValidationError, UnsupportedArchiveError
 from shortbox.metadata import ComicInfo, MetronInfo
 from shortbox.metadata.comic_info import AgeRating as ComicInfoAgeRating, Page, PageType
-from shortbox.metadata.metron_info import AgeRating as MetronInfoAgeRating, Format, Url
+from shortbox.metadata.metron_info import AgeRating as MetronInfoAgeRating, Format
 
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
@@ -84,6 +83,16 @@ def should_sync(metron_info: MetronInfo | None, comic_info: ComicInfo | None, da
     return True
 
 
+def _force_one_shot(comic_info: ComicInfo | None, metron_info: MetronInfo | None) -> bool:
+    """Mylar3 importer rule: single-issue volume started before the current year."""
+    if comic_info is None or comic_info.count != 1:
+        return False
+    year = comic_info.volume if comic_info.volume and comic_info.volume > 1900 else None
+    if year is None and metron_info and metron_info.series:
+        year = metron_info.series.start_year
+    return year is not None and year < datetime.now().astimezone().year
+
+
 def _merge_comic_info(existing: ComicInfo | None, fetched: ComicInfo) -> None:
     """Preserve user-customized ComicInfo fields that the service did not populate."""
     if existing is None:
@@ -94,7 +103,10 @@ def _merge_comic_info(existing: ComicInfo | None, fetched: ComicInfo) -> None:
         fetched.language_iso = existing.language_iso
 
     # Age rating: preserve existing when fetched is UNKNOWN
-    if fetched.age_rating == ComicInfoAgeRating.UNKNOWN and existing.age_rating != ComicInfoAgeRating.UNKNOWN:
+    if (
+        fetched.age_rating == ComicInfoAgeRating.UNKNOWN
+        and existing.age_rating != ComicInfoAgeRating.UNKNOWN
+    ):
         fetched.age_rating = existing.age_rating
 
     # Format: preserve existing when fetched is empty
@@ -115,7 +127,9 @@ def _merge_comic_info(existing: ComicInfo | None, fetched: ComicInfo) -> None:
 
     # Pages: preserve bookmarks and specific page types from existing metadata
     if existing.pages and fetched.pages:
-        existing_by_idx: dict[int, Page] = {p.image: p for p in existing.pages if p.image is not None}
+        existing_by_idx: dict[int, Page] = {
+            p.image: p for p in existing.pages if p.image is not None
+        }
         for page in fetched.pages:
             if page.image is None:
                 continue
@@ -142,7 +156,10 @@ def _merge_metron_info(existing: MetronInfo | None, fetched: MetronInfo) -> None
         return
 
     # Age rating: preserve existing when fetched is UNKNOWN
-    if fetched.age_rating == MetronInfoAgeRating.UNKNOWN and existing.age_rating != MetronInfoAgeRating.UNKNOWN:
+    if (
+        fetched.age_rating == MetronInfoAgeRating.UNKNOWN
+        and existing.age_rating != MetronInfoAgeRating.UNKNOWN
+    ):
         fetched.age_rating = existing.age_rating
 
     # URLs: merge, dedup by value
@@ -246,13 +263,20 @@ def sync_comic(
                 )
                 fmt_enum, fmt_short = resolve_series_format(
                     series_name=series_name,
-                    filename=comic.file.name,
+                    filename=str(comic.file),
                     cli_format=cli_format,
                     existing_format_comic=comic_info.format if comic_info else None,
                     existing_format_metron=(
-                        metron_info.series.format
-                        if metron_info and metron_info.series
+                        metron_info.series.format if metron_info and metron_info.series else None
+                    ),
+                    fetched_format_comic=(result.comic_info.format if result.comic_info else None),
+                    fetched_format_metron=(
+                        result.metron_info.series.format
+                        if result.metron_info and result.metron_info.series
                         else None
+                    ),
+                    force_one_shot=_force_one_shot(
+                        comic_info=result.comic_info, metron_info=result.metron_info
                     ),
                     prompt_if_missing=True,
                 )
