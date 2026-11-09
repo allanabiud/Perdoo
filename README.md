@@ -19,7 +19,7 @@ This repository is an enhanced fork of [Buried-In-Code/Perdoo](https://github.co
 - **On-Demand Format Forcing (`-F` / `--format`)**: Specify a series format on the fly (`TPB`, `HC`, `OB`, `One-Shot`, `GN`, `Annual`) when running `sync`, `rename`, or `pipeline`.
 - **Interactive Format Prompts**: When metadata from services (such as ComicVine) lacks series format details, Perdoo interactively prompts you to choose the format and writes it directly to `ComicInfo.xml` and `MetronInfo.xml`.
 - **Format-Aware Naming (`{format-short}`)**: Adds the `{format-short}` pattern key to generate clean folder and file names (e.g. `[TPB]`, `[HC]`, `[OB]`, `[One-Shot]`).
-- **Archive Page Counting**: Inspects image contents inside the archive and automatically writes accurate `page_count` and page lists into `ComicInfo.xml` and `MetronInfo.xml`.
+- **Archive Page Counting & Double-Page Detection**: Inspects image headers inside the archive to populate accurate `page_count`, pixel dimensions (`ImageWidth`, `ImageHeight`), exact byte sizes (`ImageSize`), and automatic double-page spread detection (`DoublePage="true"`) in `ComicInfo.xml`.
 - **Pipeline WebP Integration**: Adds `-w` / `--webp` / `--no-webp` flags to `perdoo pipeline` to compress and standardize inbound comics in a single pass.
 - **Smart Sync Feedback**: Provides clear console status when archives are skipped due to the recent sync interval, and allows bypassing it with `-f` / `--force`.
 
