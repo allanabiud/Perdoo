@@ -308,7 +308,9 @@ def apply_format_to_metadata(
     fmt_enum: Format | None,
     fmt_short: str | None,
 ) -> None:
-    if fmt_short and comic_info is not None:
-        comic_info.format = fmt_short
+    if comic_info is not None and (fmt_enum or fmt_short):
+        # Metadata always stores the full format name (e.g. "Trade Paperback");
+        # short codes (e.g. "TPB") are only used for {format-short} naming.
+        comic_info.format = fmt_enum.value if fmt_enum else fmt_short
     if fmt_enum and metron_info is not None and metron_info.series is not None:
         metron_info.series.format = fmt_enum

@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timezone
 from types import SimpleNamespace
 
 import pytest
+from shortbox.metadata import ComicInfo
 
 from perdoo.cli import sync
 
@@ -89,3 +90,25 @@ def test_force_one_shot(
         )
         is expected
     )
+
+
+@pytest.mark.parametrize(
+    ("existing_format", "expected"),
+    [
+        ("TPB", "Trade Paperback"),
+        ("HC", "Hardcover"),
+        ("OB", "Omnibus"),
+        ("Trade Paperback", "Trade Paperback"),
+        ("Hardcover", "Hardcover"),
+        ("Absolute", "Absolute"),  # unknown strings are preserved as-is
+    ],
+    ids=["short-tpb", "short-hc", "short-ob", "full-tpb", "full-hc", "unknown"],
+)
+def test_merge_comic_info_normalizes_legacy_short_format(
+    existing_format: str, expected: str
+) -> None:
+    """Preserved formats are normalised to the full name; short codes are naming-only."""
+    fetched = ComicInfo(series="X", number="1")
+    existing = ComicInfo(series="X", number="1", format=existing_format)
+    sync._merge_comic_info(existing, fetched)  # noqa: SLF001
+    assert fetched.format == expected

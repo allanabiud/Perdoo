@@ -1,8 +1,13 @@
 import pytest
-from shortbox.metadata.metron_info import Format
+from shortbox.metadata import ComicInfo, MetronInfo
+from shortbox.metadata.metron_info import Format, Series
 
 from perdoo import format_resolver
-from perdoo.format_resolver import detect_format_from_description, resolve_series_format
+from perdoo.format_resolver import (
+    apply_format_to_metadata,
+    detect_format_from_description,
+    resolve_series_format,
+)
 
 
 class TestDetectFormatFromDescription:
@@ -241,3 +246,47 @@ class TestResolveSeriesFormat:
             fetched_format_comic="Absolute",
             prompt_if_missing=False,
         ) == (None, "Absolute")
+
+
+class TestApplyFormatToMetadata:
+    """Metadata always stores the full format name; short codes are for naming only."""
+
+    def test_comic_info_stores_full_name_not_short_code(self) -> None:
+        comic_info = ComicInfo(series="Invincible", number="1")
+        metron_info = MetronInfo(series=Series(name="Invincible"), number="1")
+        apply_format_to_metadata(
+            comic_info=comic_info,
+            metron_info=metron_info,
+            fmt_enum=Format.TRADE_PAPERBACK,
+            fmt_short="TPB",
+        )
+        assert comic_info.format == "Trade Paperback"
+        assert metron_info.series is not None
+        assert metron_info.series.format == Format.TRADE_PAPERBACK
+
+    def test_hardcover_and_omnibus_store_full_names(self) -> None:
+        for fmt_enum, short, expected in [
+            (Format.HARDCOVER, "HC", "Hardcover"),
+            (Format.OMNIBUS, "OB", "Omnibus"),
+            (Format.ONE_SHOT, "One-Shot", "One-Shot"),
+            (Format.GRAPHIC_NOVEL, "GN", "Graphic Novel"),
+        ]:
+            comic_info = ComicInfo(series="X", number="1")
+            apply_format_to_metadata(
+                comic_info=comic_info, metron_info=None, fmt_enum=fmt_enum, fmt_short=short
+            )
+            assert comic_info.format == expected
+
+    def test_unknown_format_string_without_enum_is_kept(self) -> None:
+        comic_info = ComicInfo(series="X", number="1")
+        apply_format_to_metadata(
+            comic_info=comic_info, metron_info=None, fmt_enum=None, fmt_short="Absolute"
+        )
+        assert comic_info.format == "Absolute"
+
+    def test_no_format_leaves_metadata_untouched(self) -> None:
+        comic_info = ComicInfo(series="X", number="1")
+        apply_format_to_metadata(
+            comic_info=comic_info, metron_info=None, fmt_enum=None, fmt_short=None
+        )
+        assert comic_info.format is None

@@ -109,9 +109,11 @@ def _merge_comic_info(existing: ComicInfo | None, fetched: ComicInfo) -> None:
     ):
         fetched.age_rating = existing.age_rating
 
-    # Format: preserve existing when fetched is empty
+    # Format: preserve existing when fetched is empty, normalising legacy
+    # short codes ("TPB") to the full name ("Trade Paperback")
     if not fetched.format and existing.format:
-        fetched.format = existing.format
+        fmt_enum, fmt_short = parse_format_str(existing.format)
+        fetched.format = fmt_enum.value if fmt_enum else (fmt_short or existing.format)
 
     # Scan information: preserve existing
     if not fetched.scan_information and existing.scan_information:
