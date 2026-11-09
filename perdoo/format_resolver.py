@@ -1,12 +1,15 @@
 __all__ = [
     "parse_format_str",
+    "detect_format_from_filename",
     "prompt_format_selection",
     "resolve_series_format",
     "apply_format_to_metadata",
 ]
 
+import re
 import sys
 from typing import Optional, Tuple
+
 import questionary
 from shortbox.metadata import ComicInfo, MetronInfo
 from shortbox.metadata.metron_info import Format
@@ -45,6 +48,24 @@ FORMAT_CHOICES = [
 ]
 
 
+def detect_format_from_filename(name: str) -> Tuple[Optional[Format], Optional[str]]:
+    """Smart heuristic format detection from filename or directory path."""
+    clean = name.lower()
+    if re.search(r"\b(omnibus|omni)\b|\[ob\]|\(ob\)", clean):
+        return Format.OMNIBUS, "OB"
+    if re.search(r"\b(hardcover|deluxe|dlx)\b|\[hc\]|\(hc\)", clean):
+        return Format.HARDCOVER, "HC"
+    if re.search(r"\b(tpb|trade\s*paperback|collection)\b|\[tpb\]|\(tpb\)|\bvol(\.|\s+)\d+", clean):
+        return Format.TRADE_PAPERBACK, "TPB"
+    if re.search(r"\b(one[\s\-_]*shot|special)\b|\[one[\s\-_]*shot\]", clean):
+        return Format.ONE_SHOT, "One-Shot"
+    if re.search(r"\bannual\b", clean):
+        return Format.ANNUAL, "Annual"
+    if re.search(r"\b(graphic\s*novel|gn)\b|\[gn\]|\(gn\)", clean):
+        return Format.GRAPHIC_NOVEL, "GN"
+    return None, None
+
+
 def parse_format_str(fmt_str: Optional[str]) -> Tuple[Optional[Format], Optional[str]]:
     if not fmt_str:
         return None, None
@@ -58,15 +79,23 @@ def parse_format_str(fmt_str: Optional[str]) -> Tuple[Optional[Format], Optional
         return None, fmt_str
 
 
-def prompt_format_selection(label: str) -> Tuple[Optional[Format], Optional[str]]:
+def prompt_format_selection(
+    label: str, default_short: Optional[str] = None
+) -> Tuple[Optional[Format], Optional[str]]:
     """Interactively prompt user to pick a format for the series."""
     if not sys.stdin.isatty():
         return None, None
+    default_choice = FORMAT_CHOICES[0]
+    if default_short:
+        for c in FORMAT_CHOICES:
+            if c.value[0] == default_short:
+                default_choice = c
+                break
     try:
         selected = questionary.select(
             f"Select format for '{label}':",
             choices=FORMAT_CHOICES,
-            default=FORMAT_CHOICES[0],
+            default=default_choice,
         ).ask()
         if selected:
             short, fmt_enum = selected
@@ -98,12 +127,19 @@ def resolve_series_format(
         if fmt or short:
             return fmt, short
 
-    # 3. If format is missing and interactive prompt is enabled, ask user
+    # 3. Detect format from filename / series name heuristics
+    det_fmt, det_short = detect_format_from_filename(f"{series_name or ''} {filename}")
+
+    # 4. If format is missing and interactive prompt is enabled, ask user
     if prompt_if_missing:
         label = series_name or filename
-        fmt_enum, fmt_short = prompt_format_selection(label)
+        fmt_enum, fmt_short = prompt_format_selection(label, default_short=det_short)
         if fmt_enum or fmt_short:
             return fmt_enum, fmt_short
+
+    # 5. Non-interactive fallback: use detected format if found
+    if det_fmt or det_short:
+        return det_fmt, det_short
 
     return None, None
 

@@ -24,6 +24,39 @@ from perdoo.services._models import (
 )
 
 
+ROLE_NORMALIZATION: dict[str, str] = {
+    "writer": "Writer",
+    "script": "Writer",
+    "story": "Writer",
+    "plot": "Writer",
+    "penciler": "Penciller",
+    "penciller": "Penciller",
+    "pencils": "Penciller",
+    "artist": "Penciller",
+    "art": "Penciller",
+    "illustrator": "Penciller",
+    "inker": "Inker",
+    "inks": "Inker",
+    "finishes": "Inker",
+    "colorist": "Colorist",
+    "colors": "Colorist",
+    "colourist": "Colorist",
+    "colours": "Colorist",
+    "letterer": "Letterer",
+    "letters": "Letterer",
+    "cover": "Cover Artist",
+    "cover artist": "Cover Artist",
+    "covers": "Cover Artist",
+    "variant cover": "Cover Artist",
+    "editor": "Editor",
+    "assistant editor": "Editor",
+    "associate editor": "Editor",
+    "group editor": "Editor",
+    "managing editor": "Editor",
+    "senior editor": "Editor",
+}
+
+
 class Comicvine:
     def __init__(self, api_key: str):
         self.session = Simyan(
@@ -46,7 +79,27 @@ class Comicvine:
                 ),
             )
             if year:
-                options = [x for x in options if x.start_year == year]
+                year_options = [x for x in options if x.start_year == year]
+                if year_options:
+                    options = year_options
+
+            # Two-pass fallback: if no volume matches exact name with subtitles (e.g. "Batman: Court of Owls"), try base title
+            if not options and (":" in name or " - " in name or " Vol" in name):
+                base_name = re.split(r"[:\-]|\bVol\b|\bVolume\b", name, maxsplit=1)[0].strip()
+                if base_name and base_name.lower() != name.lower():
+                    clean_options = sorted(
+                        self.session.list_volumes({"filter": f"name:{base_name}"}),
+                        key=lambda x: (
+                            x.publisher.name if x.publisher and x.publisher.name else "",
+                            x.name,
+                            x.start_year or 0,
+                        ),
+                    )
+                    if year:
+                        clean_year = [x for x in clean_options if x.start_year == year]
+                        options = clean_year or clean_options
+                    else:
+                        options = clean_options
             if options:
                 search = name
                 if volume:
@@ -179,6 +232,11 @@ class Comicvine:
         )
 
         def load_role(value: str) -> Role:
+            normalized = ROLE_NORMALIZATION.get(value.strip().lower(), value.strip())
+            try:
+                return Role.load(value=normalized)
+            except ValueError:
+                pass
             try:
                 return Role.load(value=value.strip())
             except ValueError:
@@ -231,22 +289,48 @@ class Comicvine:
         )
 
     def _build_comic_info(self, series: Volume, issue: Issue) -> ComicInfo:
+        # Fallback to description if summary is missing
+        summary = issue.summary
+        if (not summary or len(summary.strip()) < 20) and getattr(issue, "description", None):
+            clean_desc = re.sub(r"<[^>]+>", " ", issue.description)
+            clean_desc = re.sub(r"\s+", " ", clean_desc).strip()
+            summary = clean_desc or summary
+
         comic_info = ComicInfo(
             title=issue.name,
             series=series.name,
             number=issue.number,
-            summary=issue.summary,
+            summary=summary,
             publisher=series.publisher.name if series.publisher else None,
             web=str(issue.site_url),
             pages=[],
         )
 
-        comic_info.cover_date = issue.cover_date
-        comic_info.credits = {
-            x.name: [r.strip() for r in re.split(r"[~\r\n,]+", x.roles) if r.strip()]
-            for x in issue.creators
-            if x.name
-        }
+        if issue.cover_date:
+            comic_info.cover_date = issue.cover_date
+            comic_info.year = issue.cover_date.year
+            comic_info.month = issue.cover_date.month
+            comic_info.day = issue.cover_date.day
+        elif issue.store_date:
+            comic_info.year = issue.store_date.year
+            comic_info.month = issue.store_date.month
+            comic_info.day = issue.store_date.day
+
+        if series.issue_count:
+            comic_info.count = series.issue_count
+        if series.start_year:
+            comic_info.volume = series.start_year
+
+        # Normalize creator roles so Penciller, Cover Artist, Inker, etc. are populated
+        normalized_credits: dict[str, list[str]] = {}
+        for x in issue.creators:
+            if not x.name:
+                continue
+            raw_roles = [r.strip() for r in re.split(r"[~\r\n,]+", x.roles) if r.strip()]
+            norm_roles = [ROLE_NORMALIZATION.get(r.lower(), r.title()) for r in raw_roles]
+            normalized_credits[x.name] = norm_roles
+
+        comic_info.credits = normalized_credits
         comic_info.character_list = [x.name for x in issue.characters if x.name]
         comic_info.team_list = [x.name for x in issue.teams if x.name]
         comic_info.location_list = [x.name for x in issue.locations if x.name]

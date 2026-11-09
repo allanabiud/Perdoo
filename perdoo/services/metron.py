@@ -365,7 +365,21 @@ class Metron:
         )
 
         comic_info.cover_date = issue.cover_date
-        comic_info.credits = {x.creator: [r.name for r in x.role] for x in issue.credits}
+        if issue.cover_date:
+            comic_info.year = issue.cover_date.year
+            comic_info.month = issue.cover_date.month
+            comic_info.day = issue.cover_date.day
+        elif issue.store_date:
+            comic_info.year = issue.store_date.year
+            comic_info.month = issue.store_date.month
+            comic_info.day = issue.store_date.day
+
+        if series and getattr(series, "issue_count", None):
+            comic_info.count = series.issue_count
+
+        comic_info.credits = {
+            x.creator: [r.name.title() for r in x.role] for x in issue.credits
+        }
         comic_info.genre_list = [x.name for x in series.genres]
         comic_info.character_list = [x.name for x in issue.characters]
         comic_info.team_list = [x.name for x in issue.teams]

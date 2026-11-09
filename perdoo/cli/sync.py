@@ -10,10 +10,11 @@ from shortbox import Comic
 from shortbox.errors import ArchiveCapabilityError, MetadataValidationError, UnsupportedArchiveError
 from shortbox.metadata import ComicInfo, MetronInfo
 from shortbox.metadata.comic_info import Page, PageType
+from shortbox.metadata.metron_info import Format
 
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
-from perdoo.format_resolver import apply_format_to_metadata, resolve_series_format
+from perdoo.format_resolver import apply_format_to_metadata, parse_format_str, resolve_series_format
 from perdoo.pages import update_comic_pages_metadata
 from perdoo.services import Comicvine, Metron, Search, Service
 from perdoo.services._models import get_comic_info_note_modified
@@ -121,6 +122,49 @@ def sync_comic(
                         metron_info=result.metron_info,
                         image_extensions=image_extensions,
                     )
+
+                # Hybrid enrichment: If format is missing and another service (e.g. Metron) is available
+                if not (result.comic_info and result.comic_info.format) and not (
+                    result.metron_info
+                    and result.metron_info.series
+                    and result.metron_info.series.format
+                    and result.metron_info.series.format != Format.SINGLE_ISSUE
+                ):
+                    for other_svc in services:
+                        if other_svc is not svc and hasattr(other_svc, "session"):
+                            try:
+                                cv_id = getattr(query.series, "comicvine", None)
+                                m_series = None
+                                if cv_id and hasattr(other_svc.session, "series_list"):
+                                    m_series_list = other_svc.session.series_list(
+                                        params={"cv_id": cv_id}
+                                    )
+                                    if m_series_list:
+                                        m_series = m_series_list[0]
+                                if (
+                                    not m_series
+                                    and query.series.name
+                                    and hasattr(other_svc.session, "series_list")
+                                ):
+                                    m_series_list = other_svc.session.series_list(
+                                        params={"name": query.series.name}
+                                    )
+                                    if m_series_list:
+                                        m_series = m_series_list[0]
+                                if m_series and getattr(m_series, "series_type", None):
+                                    fmt_enum, fmt_short = parse_format_str(
+                                        m_series.series_type.name
+                                    )
+                                    if fmt_enum or fmt_short:
+                                        apply_format_to_metadata(
+                                            result.comic_info,
+                                            result.metron_info,
+                                            fmt_enum,
+                                            fmt_short,
+                                        )
+                                        break
+                            except Exception:
+                                pass
 
                 series_name = (
                     result.comic_info.series
