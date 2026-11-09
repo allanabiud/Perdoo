@@ -17,7 +17,7 @@ This repository is an enhanced fork of [Buried-In-Code/Perdoo](https://github.co
 
 - **Native WebP Conversion (`perdoo webp`)**: Parallel image conversion using `cwebp` (with Pillow fallback). Performs fast 7z archive pre-inspection to skip archives already 100% WebP in milliseconds without extracting. Cleans OS junk files (`.DS_Store`, `__MACOSX`, `Thumbs.db`) automatically and replaces files atomically with archive integrity checking.
 - **On-Demand Format Forcing (`-F` / `--format`)**: Specify a series format on the fly (`TPB`, `HC`, `OB`, `One-Shot`, `GN`, `Annual`) when running `sync`, `rename`, or `pipeline`.
-- **Interactive Format Prompts**: When metadata from services (such as ComicVine) lacks series format details, Perdoo interactively prompts you to choose the format and writes it directly to `ComicInfo.xml` and `MetronInfo.xml`.
+- **Interactive Format Prompts**: When no automatic source (CLI flag, stored metadata, filename/directory tags, service-fetched format, One-Shot rule) can determine a series format, Perdoo interactively prompts you to choose one and writes it directly to `ComicInfo.xml` and `MetronInfo.xml`. When detection succeeds, no prompt is shown.
 - **Format-Aware Naming (`{format-short}`)**: Adds the `{format-short}` pattern key to generate clean folder and file names (e.g. `[TPB]`, `[HC]`, `[OB]`, `[One-Shot]`).
 - **Archive Page Counting & Double-Page Detection**: Inspects image headers inside the archive to populate accurate `page_count`, pixel dimensions (`ImageWidth`, `ImageHeight`), exact byte sizes (`ImageSize`), and automatic double-page spread detection (`DoublePage="true"`) in `ComicInfo.xml`.
 - **Pipeline WebP Integration**: Adds `-w` / `--webp` / `--no-webp` flags to `perdoo pipeline` to compress and standardize inbound comics in a single pass.
@@ -26,7 +26,7 @@ This repository is an enhanced fork of [Buried-In-Code/Perdoo](https://github.co
 - **Date and Count Population**: Fills `Year`, `Month`, `Day`, `Count`, and `Volume` fields in `ComicInfo.xml` from both ComicVine and Metron issue data, using `cover_date` with `store_date` as a fallback.
 - **Rich Synopsis Fallback**: When an issue's `summary` field is empty or very short, falls back to the full `description` field with HTML tags stripped to provide a meaningful summary.
 - **Two-Pass Subtitle Search**: When a series name with subtitles (e.g. "Batman: Court of Owls") returns no ComicVine results, automatically retries with the base title ("Batman").
-- **Smart Filename Format Detection**: Regex-based heuristic detects format keywords (`Omnibus`, `HC`, `TPB`, `Vol.X`, `Deluxe`, `Annual`) from filenames and directory paths, pre-selecting the correct default in interactive prompts.
+- **Smart Filename Format Detection**: Regex-based heuristic detects format keywords (`Omnibus`, `HC`, `TPB`, `Vol.X`, `Deluxe`, `Annual`) from filenames and directory paths, applying them automatically without prompting.
 - **Hybrid Service Format Merging**: When the primary service (e.g. ComicVine) returns no format data, cross-queries the other configured service (e.g. Metron) for series type information and applies it.
 - **Robust 7z Extraction Fallback**: When Python bindings for RAR or 7-Zip archives are not installed, falls back to the system `7z` command-line tool to extract and re-pack as CBZ.
 - **Custom Metadata Preservation**: During re-sync, preserves user-customized fields that services do not populate: language, age rating, format, scan information, notes (merged with service IDs), and page-level bookmarks and specific page types.
@@ -222,12 +222,12 @@ When Perdoo needs a series format (for metadata and `{format-short}` naming), it
 
 1. The `-F` / `--format` CLI flag.
 2. The format already stored in the archive's metadata (preserved across syncs).
-3. Format keywords in the filename or its directory path (e.g. `[TPB]`, `Omnibus`, `Deluxe`), confirmed interactively when a prompt is available.
+3. Format keywords in the filename or its directory path (e.g. `[TPB]`, `Omnibus`, `Deluxe`).
 4. The format fetched from the metadata service: Metron's series type, or Mylar3-style detection from ComicVine description text (checked volume-first, whole text for decks and the first 60 characters for descriptions).
 5. The Mylar3 One-Shot rule: a single-issue volume whose start year is before the current year.
-6. An interactive prompt. A filename-based guess is pre-selected for confirmation; when nothing is known the first choice is shown. Non-interactive runs use the best guess from steps 3-5.
+6. An interactive prompt — only when steps 1-5 all failed to detect a format. Non-interactive runs leave the format unset.
 
-Steps 4 and 5 are applied automatically without prompting, and a filename/directory tag always wins over service-detected text.
+Steps 3-5 are applied automatically without prompting, and a filename/directory tag always wins over service-detected text.
 
 ## Settings
 

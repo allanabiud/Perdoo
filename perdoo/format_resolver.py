@@ -230,18 +230,17 @@ def prompt_format_selection(
 
 
 def _prompt_for_guess(
-    label: str, det_short: str | None, guess_known: bool, prompt_if_missing: bool
+    label: str, guess_known: bool, prompt_if_missing: bool
 ) -> tuple[Format | None, str | None]:
-    """Confirm a filename-based guess interactively, or ask when nothing is known.
+    """Ask the user only when every automatic source failed to detect a format.
 
-    Service-fetched guesses (description detection, Metron series type) and the
-    One-Shot forcing rule are applied automatically without prompting.
+    CLI flag, stored metadata, filename/directory tags, service-fetched guesses
+    (description detection, Metron series type) and the One-Shot forcing rule
+    are all applied without prompting.
     """
-    if not prompt_if_missing:
+    if not prompt_if_missing or guess_known:
         return None, None
-    if not det_short and guess_known:
-        return None, None
-    return prompt_format_selection(label, default_short=det_short)
+    return prompt_format_selection(label)
 
 
 def resolve_series_format(
@@ -284,11 +283,9 @@ def resolve_series_format(
     elif not (guess_fmt or guess_short) and force_one_shot:
         guess_fmt, guess_short = Format.ONE_SHOT, "One-Shot"
 
-    # 5. Confirm a filename-based guess interactively, or ask the user when
-    #    nothing is known. Service-fetched guesses are applied automatically.
+    # 5. Prompt only when every automatic source failed to detect a format.
     fmt_enum, fmt_short = _prompt_for_guess(
         label=series_name or filename,
-        det_short=det_short,
         guess_known=bool(guess_fmt or guess_short),
         prompt_if_missing=prompt_if_missing,
     )

@@ -215,14 +215,25 @@ class TestResolveSeriesFormat:
             series_name="Batman", filename="Batman #001 (2012).cbz", prompt_if_missing=False
         ) == (None, None)
 
-    def test_filename_guess_is_confirmed_by_prompt(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_filename_guess_is_applied_without_prompting(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fail(*_args: object, **_kwargs: object) -> tuple[None, None]:
+            raise AssertionError("prompt must not fire for a filename-based format")
+
+        monkeypatch.setattr(format_resolver, "prompt_format_selection", fail)
+        assert resolve_series_format(
+            series_name="Batman", filename="Batman [TPB] #001 (2012).cbz", prompt_if_missing=True
+        ) == (Format.TRADE_PAPERBACK, "TPB")
+
+    def test_prompt_fires_only_when_detection_failed(self, monkeypatch: pytest.MonkeyPatch) -> None:
         def choose_one_shot(_label: str, default_short: str | None = None) -> tuple[Format, str]:
-            assert default_short == "TPB"
+            assert default_short is None
             return Format.ONE_SHOT, "One-Shot"
 
         monkeypatch.setattr(format_resolver, "prompt_format_selection", choose_one_shot)
         assert resolve_series_format(
-            series_name="Batman", filename="Batman [TPB] #001 (2012).cbz", prompt_if_missing=True
+            series_name="Batman", filename="Batman #001 (2012).cbz", prompt_if_missing=True
         ) == (Format.ONE_SHOT, "One-Shot")
 
     def test_fetched_format_is_applied_without_prompting(

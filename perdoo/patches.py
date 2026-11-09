@@ -4,6 +4,7 @@ from io import BytesIO
 from pathlib import Path
 import re
 from typing import TypeVar
+from xml.etree.ElementTree import ParseError
 
 from msgspec import ValidationError
 from msgspec_xml import decode
@@ -16,16 +17,7 @@ from shortbox.metadata.comic_info import PageType
 
 MetadataT = TypeVar("MetadataT", bound=Metadata)
 
-_IMAGE_EXTENSIONS: set[str] = {
-    ".jpg",
-    ".jpeg",
-    ".png",
-    ".webp",
-    ".jxl",
-    ".gif",
-    ".bmp",
-    ".tiff",
-}
+_IMAGE_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".webp", ".jxl", ".gif", ".bmp", ".tiff"}
 
 
 def _sanitized_get_metadata(self: Comic, metadata_type: type[MetadataT]) -> MetadataT | None:
@@ -43,7 +35,9 @@ def _sanitized_get_metadata(self: Comic, metadata_type: type[MetadataT]) -> Meta
             instance = decode(raw_bytes, type_=metadata_type)
             self._metadata_cache[metadata_type] = instance
             return instance
-        except ValidationError:
+        except (ValidationError, ParseError):
+            # ParseError: malformed XML from legacy taggers (e.g. a bare "&"
+            # in <Series>) aborts the parser before validation runs.
             pass
 
         # 2. Decode with XML sanitization for common legacy tagger errors (e.g., spaces or multiple URLs in <Web>)
@@ -58,6 +52,12 @@ def _sanitized_get_metadata(self: Comic, metadata_type: type[MetadataT]) -> Meta
                 return ""
 
             cleaned_text = re.sub(r"<Web>(.*?)</Web>", _fix_web, text, flags=re.DOTALL)
+
+            # Escape bare ampersands (e.g. "Superman Red & Blue") that legacy
+            # taggers wrote raw, keeping already-valid entities intact.
+            cleaned_text = re.sub(
+                r"&(?!(?:#\d+|#x[0-9a-fA-F]+|[a-zA-Z][\w.-]*);)", "&amp;", cleaned_text
+            )
 
             try:
                 instance = decode(cleaned_text.encode("utf-8"), type_=metadata_type)
@@ -136,7 +136,9 @@ def _robust_get_cover(self: Comic) -> bytes:
         except Exception:
             continue
 
-    raise MissingArchiveMemberError(f"{self.file.name!r} contains no valid image to use as a cover.")
+    raise MissingArchiveMemberError(
+        f"{self.file.name!r} contains no valid image to use as a cover."
+    )
 
 
 def apply_patches() -> None:
