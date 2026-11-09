@@ -3,14 +3,17 @@ __all__ = ["register"]
 from argparse import Namespace, _SubParsersAction
 from collections.abc import Sequence
 from datetime import datetime
+from pathlib import Path
 
 from rich_argparse import HelpPreviewAction
 from shortbox import Comic
 from shortbox.errors import ArchiveCapabilityError, MetadataValidationError, UnsupportedArchiveError
 from shortbox.metadata import ComicInfo, MetronInfo
+from shortbox.metadata.comic_info import Page, PageType
 
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
+from perdoo.format_resolver import apply_format_to_metadata, resolve_series_format
 from perdoo.services import Comicvine, Metron, Search, Service
 from perdoo.services._models import get_comic_info_note_modified
 from perdoo.settings import Service as ServiceOption, Services, Settings
@@ -45,6 +48,13 @@ def register(subparsers: _SubParsersAction) -> None:
         help="Synchronize even if the stored metadata was updated within the configured interval.",
     )
     parser.add_argument(
+        "-F",
+        "--format",
+        dest="format",
+        metavar="FORMAT",
+        help="Force comic format (e.g. TPB, HC, OB, One-Shot, GN, Annual).",
+    )
+    parser.add_argument(
         "--generate-help-preview", action=HelpPreviewAction, path="docs/img/perdoo_sync.svg"
     )
     parser.set_defaults(func=run)
@@ -72,7 +82,15 @@ def should_sync(metron_info: MetronInfo | None, comic_info: ComicInfo | None, da
     return True
 
 
-def sync_comic(comic: Comic, services: Sequence[Service], days: int, force: bool = False) -> None:
+def sync_comic(
+    comic: Comic,
+    services: Sequence[Service],
+    days: int,
+    force: bool = False,
+    cli_format: str | None = None,
+    handle_pages: bool = True,
+    image_extensions: Sequence[str] = (".png", ".jpg", ".jpeg", ".webp", ".jxl"),
+) -> None:
     try:
         metron_info = comic.get_metadata(MetronInfo)
     except MetadataValidationError as err:
@@ -89,6 +107,56 @@ def sync_comic(comic: Comic, services: Sequence[Service], days: int, force: bool
     try:
         for svc in services:
             if result := svc.fetch(search=query):
+                if handle_pages:
+                    filenames = comic.list_filenames()
+                    image_files = [
+                        f
+                        for f in filenames
+                        if not f.startswith("__MACOSX/")
+                        and Path(f).name not in {"thumbs.db", ".DS_Store"}
+                        and Path(f).suffix.lower() in image_extensions
+                    ]
+                    page_count = len(image_files)
+                    if page_count > 0:
+                        if result.comic_info:
+                            result.comic_info.page_count = page_count
+                            if not result.comic_info.pages:
+                                result.comic_info.pages = [
+                                    Page(
+                                        image=i,
+                                        type=PageType.FRONT_COVER if i == 0 else PageType.STORY,
+                                    )
+                                    for i in range(page_count)
+                                ]
+                        if result.metron_info:
+                            result.metron_info.page_count = page_count
+
+                series_name = (
+                    result.comic_info.series
+                    if result.comic_info
+                    else (
+                        result.metron_info.series.name
+                        if result.metron_info and result.metron_info.series
+                        else None
+                    )
+                )
+                fmt_enum, fmt_short = resolve_series_format(
+                    series_name=series_name,
+                    filename=comic.file.name,
+                    cli_format=cli_format,
+                    existing_format_comic=comic_info.format if comic_info else None,
+                    existing_format_metron=(
+                        metron_info.series.format
+                        if metron_info and metron_info.series
+                        else None
+                    ),
+                    prompt_if_missing=True,
+                )
+                if fmt_enum or fmt_short:
+                    apply_format_to_metadata(
+                        result.comic_info, result.metron_info, fmt_enum, fmt_short
+                    )
+
                 with CONSOLE.status("Writing ComicInfo.xml to archive"):
                     comic.set_metadata(result.comic_info)
                 with CONSOLE.status("Writing MetronInfo.xml to archive"):
@@ -118,7 +186,13 @@ def run(args: Namespace) -> None:
         try:
             with Comic.open(file=entry) as comic:
                 sync_comic(
-                    comic=comic, services=services, days=settings.sync.days, force=args.force
+                    comic=comic,
+                    services=services,
+                    days=settings.sync.days,
+                    force=args.force,
+                    cli_format=getattr(args, "format", None),
+                    handle_pages=settings.output.comic_info.handle_pages,
+                    image_extensions=settings.output.image_extensions,
                 )
         except UnsupportedArchiveError:
             pass

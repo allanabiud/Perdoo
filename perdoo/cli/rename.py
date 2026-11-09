@@ -9,9 +9,12 @@ from rich.progress import BarColumn, MofNCompleteColumn, Progress, SpinnerColumn
 from rich_argparse import HelpPreviewAction
 from shortbox import Comic
 from shortbox.errors import ArchiveCapabilityError, UnsupportedArchiveError
+from shortbox.metadata import ComicInfo, MetronInfo
+from shortbox.metadata.comic_info import Page, PageType
 
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
+from perdoo.format_resolver import apply_format_to_metadata, parse_format_str
 from perdoo.naming import build_file
 from perdoo.settings import Settings
 from perdoo.utils import list_files
@@ -39,6 +42,13 @@ def register(subparsers: _SubParsersAction) -> None:
         help="Skip archives with this extension. Repeat to ignore multiple extensions.",
     )
     parser.add_argument(
+        "-F",
+        "--format",
+        dest="format",
+        metavar="FORMAT",
+        help="Force comic format (e.g. TPB, HC, OB, One-Shot, GN, Annual).",
+    )
+    parser.add_argument(
         "--generate-help-preview", action=HelpPreviewAction, path="docs/img/perdoo_rename.svg"
     )
     parser.set_defaults(func=run)
@@ -62,8 +72,60 @@ def rename_comic(comic: Comic, image_exts: Sequence[str]) -> None:
         )
 
 
-def rename_entry(entry: Path, target: Path, settings: Settings) -> None:
+def rename_entry(
+    entry: Path, target: Path, settings: Settings, cli_format: str | None = None
+) -> None:
     with Comic.open(file=entry) as comic:
+        comic_info = None
+        metron_info = None
+        try:
+            comic_info = comic.get_metadata(ComicInfo)
+        except Exception:
+            pass
+        try:
+            metron_info = comic.get_metadata(MetronInfo)
+        except Exception:
+            pass
+
+        updated = False
+        if cli_format:
+            fmt_enum, fmt_short = parse_format_str(cli_format)
+            if fmt_enum or fmt_short:
+                apply_format_to_metadata(comic_info, metron_info, fmt_enum, fmt_short)
+                updated = True
+
+        if settings.output.comic_info.handle_pages and (comic_info or metron_info):
+            filenames = comic.list_filenames()
+            image_files = [
+                f
+                for f in filenames
+                if not f.startswith("__MACOSX/")
+                and Path(f).name not in {"thumbs.db", ".DS_Store"}
+                and Path(f).suffix.lower() in settings.output.image_extensions
+            ]
+            page_count = len(image_files)
+            if page_count > 0:
+                if comic_info and (comic_info.page_count != page_count or not comic_info.pages):
+                    comic_info.page_count = page_count
+                    if not comic_info.pages:
+                        comic_info.pages = [
+                            Page(
+                                image=i,
+                                type=PageType.FRONT_COVER if i == 0 else PageType.STORY,
+                            )
+                            for i in range(page_count)
+                        ]
+                    updated = True
+                if metron_info and metron_info.page_count != page_count:
+                    metron_info.page_count = page_count
+                    updated = True
+
+        if updated:
+            if comic_info:
+                comic.set_metadata(comic_info)
+            if metron_info:
+                comic.set_metadata(metron_info)
+
         new_file = build_file(
             comic=comic, folder=settings.output.folder, settings=settings.output.naming
         )
@@ -102,7 +164,12 @@ def run(args: Namespace) -> None:
     with progress:
         for entry in progress.track(files, description="Renaming comics"):
             try:
-                rename_entry(entry=entry, target=args.target, settings=settings)
+                rename_entry(
+                    entry=entry,
+                    target=args.target,
+                    settings=settings,
+                    cli_format=getattr(args, "format", None),
+                )
             except UnsupportedArchiveError:
                 CONSOLE.print(f"'{entry.name}' is not a supported archive, skipping")
             except Exception as err:  # noqa: BLE001

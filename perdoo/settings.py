@@ -36,6 +36,10 @@ class Output(Struct, rename="kebab"):
     metron_info: MetronInfo = field(default_factory=MetronInfo)
     naming: Naming = field(default_factory=Naming)
     remove_extensions: Sequence[str] = (".nfo", ".sfv", ".db", ".DS_Store")
+    webp: bool = False
+    webp_jobs: int = 4
+    webp_lossless: bool = False
+    webp_quality: int = 80
 
 
 class Comicvine(Struct, rename="kebab"):

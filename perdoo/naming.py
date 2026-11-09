@@ -20,9 +20,25 @@ FORMAT_SHORT_NAMES = {
     Format.GRAPHIC_NOVEL: "GN",
     Format.HARDCOVER: "HC",
     Format.OMNIBUS: "OB",
+    Format.ONE_SHOT: "One-Shot",
     Format.TRADE_PAPERBACK: "TPB",
 }
 _COMIC_INFO_FORMAT_SHORT_NAMES = {fmt.value: short for fmt, short in FORMAT_SHORT_NAMES.items()}
+_COMIC_INFO_FORMAT_SHORT_NAMES.update(
+    {
+        "Annual": "Annual",
+        "Digital": "Digital",
+        "GN": "GN",
+        "Graphic Novel": "GN",
+        "HC": "HC",
+        "Hardcover": "HC",
+        "OB": "OB",
+        "Omnibus": "OB",
+        "One-Shot": "One-Shot",
+        "TPB": "TPB",
+        "Trade Paperback": "TPB",
+    }
+)
 
 
 class PatternSyntaxError(ValueError):

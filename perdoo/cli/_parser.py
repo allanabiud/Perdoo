@@ -13,6 +13,7 @@ from perdoo.cli.pipeline import register as register_pipeline
 from perdoo.cli.rename import register as register_rename
 from perdoo.cli.settings import register as register_settings
 from perdoo.cli.sync import register as register_sync
+from perdoo.cli.webp import register as register_webp
 
 
 def build_parser() -> ArgumentParser:
@@ -39,5 +40,6 @@ def build_parser() -> ArgumentParser:
     register_rename(subparsers=subparsers)
     register_settings(subparsers=subparsers)
     register_sync(subparsers=subparsers)
+    register_webp(subparsers=subparsers)
 
     return parser
