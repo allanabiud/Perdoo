@@ -64,13 +64,20 @@ class Search:
     @staticmethod
     def build(comic: Comic) -> "Search":
         search: Search
-        if (
-            (metron_info := comic.get_metadata(MetronInfo))
-            and metron_info.series
-            and metron_info.series.name
-        ):
+        metron_info = None
+        comic_info = None
+        try:
+            metron_info = comic.get_metadata(MetronInfo)
+        except Exception:
+            pass
+        try:
+            comic_info = comic.get_metadata(ComicInfo)
+        except Exception:
+            pass
+
+        if metron_info and metron_info.series and metron_info.series.name:
             search = search_from_metron_info(metadata=metron_info, filename=comic.file.stem)
-        elif (comic_info := comic.get_metadata(ComicInfo)) and comic_info.series:
+        elif comic_info and comic_info.series:
             search = search_from_comic_info(metadata=comic_info, filename=comic.file.stem)
         else:
             search = search_from_filename(filename=comic.file.stem)

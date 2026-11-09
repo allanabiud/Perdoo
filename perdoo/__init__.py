@@ -16,6 +16,9 @@ from pathlib import Path
 from rich.logging import RichHandler
 
 from perdoo.console import CONSOLE
+from perdoo.patches import apply_patches
+
+apply_patches()
 
 
 def get_cache_home() -> Path:
