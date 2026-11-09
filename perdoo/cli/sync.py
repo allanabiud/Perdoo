@@ -102,11 +102,17 @@ def sync_comic(
         CONSOLE.print(str(err), style="logging.level.error")
         comic_info = None
     if not should_sync(metron_info=metron_info, comic_info=comic_info, days=days) and not force:
+        CONSOLE.print(
+            f"'{comic.file.name}' was synced within the last {days} days; skipping. Pass -f / --force to re-sync.",
+            style="dim",
+        )
         return
     query = Search.build(comic=comic)
     try:
+        found = False
         for svc in services:
             if result := svc.fetch(search=query):
+                found = True
                 if handle_pages:
                     filenames = comic.list_filenames()
                     image_files = [
@@ -162,6 +168,10 @@ def sync_comic(
                 with CONSOLE.status("Writing MetronInfo.xml to archive"):
                     comic.set_metadata(result.metron_info)
                 break
+        if not found:
+            CONSOLE.print(
+                f"No metadata found for '{comic.file.name}'", style="logging.level.warning"
+            )
     except ArchiveCapabilityError as err:
         CONSOLE.print(
             f"{err}: Consider converting to another format first", style="logging.level.warning"
