@@ -84,10 +84,10 @@ def should_sync(metron_info: MetronInfo | None, comic_info: ComicInfo | None, da
     return True
 
 
-def _merge_comic_info(existing: ComicInfo | None, fetched: ComicInfo) -> ComicInfo:
+def _merge_comic_info(existing: ComicInfo | None, fetched: ComicInfo) -> None:
     """Preserve user-customized ComicInfo fields that the service did not populate."""
     if existing is None:
-        return fetched
+        return
 
     # Language: services rarely set this, preserve existing
     if not fetched.language_iso and existing.language_iso:
@@ -135,13 +135,11 @@ def _merge_comic_info(existing: ComicInfo | None, fetched: ComicInfo) -> ComicIn
     elif existing.pages and not fetched.pages:
         fetched.pages = existing.pages
 
-    return fetched
 
-
-def _merge_metron_info(existing: MetronInfo | None, fetched: MetronInfo) -> MetronInfo:
+def _merge_metron_info(existing: MetronInfo | None, fetched: MetronInfo) -> None:
     """Preserve user-customized MetronInfo fields that the service did not populate."""
     if existing is None:
-        return fetched
+        return
 
     # Age rating: preserve existing when fetched is UNKNOWN
     if fetched.age_rating == MetronInfoAgeRating.UNKNOWN and existing.age_rating != MetronInfoAgeRating.UNKNOWN:
@@ -153,8 +151,6 @@ def _merge_metron_info(existing: MetronInfo | None, fetched: MetronInfo) -> Metr
         for url in existing.urls:
             if url.value not in existing_url_values:
                 fetched.urls.append(url)
-
-    return fetched
 
 
 def sync_comic(
@@ -266,8 +262,8 @@ def sync_comic(
                     )
 
                 # Merge with existing metadata to preserve user-customized fields
-                result.comic_info = _merge_comic_info(comic_info, result.comic_info)
-                result.metron_info = _merge_metron_info(metron_info, result.metron_info)
+                _merge_comic_info(comic_info, result.comic_info)
+                _merge_metron_info(metron_info, result.metron_info)
 
                 with CONSOLE.status("Writing ComicInfo.xml to archive"):
                     comic.set_metadata(result.comic_info)
