@@ -21,7 +21,7 @@ def list_files(path: Path, *extensions: str) -> list[Path]:
                 not extensions or file.suffix.lower() in extensions
             ):
                 files.append(file)
-        elif file.is_dir():
+        elif file.is_dir() and not file.name.startswith("."):
             files.extend(list_files(file, *extensions))
     return humansorted(files, alg=ns.NA | ns.G | ns.P)
 
