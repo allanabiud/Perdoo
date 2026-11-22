@@ -25,7 +25,7 @@ pipx install --editable ~/DEV/Projects/active/perdoo --force
 
 Python 3.11 or newer is required.
 
-### First run — settings
+### First run - settings
 
 Run `perdoo settings` once to generate your settings file with all defaults (including your naming pattern). The file is created at:
 
