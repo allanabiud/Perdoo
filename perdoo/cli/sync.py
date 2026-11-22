@@ -152,7 +152,7 @@ def sync_comic(
                 comic.set_metadata(metron_info)
         CONSOLE.print(
             f"Local metadata built for '{comic.file.name}' from filename",
-            style="logging.level.success",
+            style="success",
         )
         return "synced"
 
