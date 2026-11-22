@@ -22,7 +22,7 @@ PATTERN_MAP = {
     "number": lambda x: x.number,
 }
 
-DEFAULT_PATTERN = "{publisher-name}/{series-name}[-v{volume}]/{series-name}[-v{volume}][_{format-short}]_#{number:3}"  # noqa: E501
+DEFAULT_PATTERN = r"{publisher-name}/{series-name}[ ({series-year})][ \[{format-short}\]]/{series-name} #{number:3}[ ({cover-year})]"  # noqa: E501
 
 
 def meta(**kwargs: Any) -> SimpleNamespace:
@@ -68,20 +68,20 @@ class TestEvaluatePattern:
         )
         assert (
             evaluate_pattern(m, PATTERN_MAP, DEFAULT_PATTERN, "-")
-            == "Marvel/Amazing-Spider-Man-v5/Amazing-Spider-Man-v5_TPB_#007"
+            == "Marvel/Amazing-Spider-Man [TPB]/Amazing-Spider-Man #007"
         )
 
     def test_missing_format_short_leaves_no_double_underscore(self) -> None:
         m = meta(publisher="Marvel", series="Amazing Spider-Man", volume=5, number="7")
         result = evaluate_pattern(m, PATTERN_MAP, DEFAULT_PATTERN, "-")
         assert "__" not in result
-        assert result == "Marvel/Amazing-Spider-Man-v5/Amazing-Spider-Man-v5_#007"
+        assert result == "Marvel/Amazing-Spider-Man/Amazing-Spider-Man #007"
 
     def test_missing_volume_drops_whole_unit(self) -> None:
         m = meta(publisher="Marvel", series="Amazing Spider-Man", format_short="TPB", number="7")
         result = evaluate_pattern(m, PATTERN_MAP, DEFAULT_PATTERN, "-")
         assert "-v" not in result
-        assert result == "Marvel/Amazing-Spider-Man/Amazing-Spider-Man_TPB_#007"
+        assert result == "Marvel/Amazing-Spider-Man [TPB]/Amazing-Spider-Man #007"
 
     def test_everything_missing_has_no_empty_path_components(self) -> None:
         m = meta(number=None)
@@ -121,7 +121,7 @@ class TestFormatShort:
             series=Series(name="Amazing Spider-Man", volume=1, format=fmt), number="1"
         )
         result = from_metron_info(metadata, self.naming)
-        assert result == "Amazing-Spider-Man-v1/Amazing-Spider-Man-v1_#001"
+        assert result == "Amazing-Spider-Man/Amazing-Spider-Man #001"
 
     def test_mapped_metron_format_still_shows(self) -> None:
         metadata = MetronInfo(
@@ -129,21 +129,21 @@ class TestFormatShort:
             number="1",
         )
         result = from_metron_info(metadata, self.naming)
-        assert result == "Amazing-Spider-Man-v1/Amazing-Spider-Man-v1_TPB_#001"
+        assert result == "Amazing-Spider-Man [TPB]/Amazing-Spider-Man #001"
 
     def test_unmapped_comic_info_format_is_omitted(self) -> None:
         metadata = ComicInfo(
             series="Amazing Spider-Man", volume=1, format="Single Issue", number="1"
         )
         result = from_comic_info(metadata, self.naming)
-        assert result == "Amazing-Spider-Man-v1/Amazing-Spider-Man-v1_#001"
+        assert result == "Amazing-Spider-Man/Amazing-Spider-Man #001"
 
     def test_mapped_comic_info_format_still_shows(self) -> None:
         metadata = ComicInfo(
             series="Amazing Spider-Man", volume=1, format="Trade Paperback", number="1"
         )
         result = from_comic_info(metadata, self.naming)
-        assert result == "Amazing-Spider-Man-v1/Amazing-Spider-Man-v1_TPB_#001"
+        assert result == "Amazing-Spider-Man [TPB]/Amazing-Spider-Man #001"
 
 
 class TestEnforceFilesystemSafety:

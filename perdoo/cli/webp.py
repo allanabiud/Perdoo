@@ -43,7 +43,7 @@ JUNK_FILES: Set[str] = {"thumbs.db", ".ds_store", "desktop.ini"}
 JUNK_DIRS: Set[str] = {"__macosx"}
 
 
-def human_size(bytes_val: int) -> str:
+def human_size(bytes_val: float) -> str:
     for unit in ["B", "KB", "MB", "GB"]:
         if abs(bytes_val) < 1024.0:
             return f"{bytes_val:3.1f} {unit}"

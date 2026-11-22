@@ -21,7 +21,7 @@ tests = [
 
 [project]
 authors = [
-  { email = "buriedincode@duckpond.nz", name = "BuriedInCode" },
+  { email = "allanabiud@duckpond.nz", name = "allanabiud" },
 ]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -58,7 +58,7 @@ keywords = ["comic", "comics", "metadata", "tagger", "tagging"]
 license = "MIT"
 license-files = ["LICENSE"]
 maintainers = [
-  { email = "buriedincode@duckpond.nz", name = "BuriedInCode" },
+  { email = "allanabiud@duckpond.nz", name = "allanabiud" },
 ]
 name = "perdoo"
 readme = "README.md"
@@ -80,9 +80,9 @@ Perdoo = "perdoo.__main__:main"
 perdoo = "perdoo.__main__:main"
 
 [project.urls]
-Homepage = "https://pypi.org/project/Perdoo"
-Issues = "https://github.com/Buried-In-Code/Perdoo/issues"
-Source = "https://github.com/Buried-In-Code/Perdoo"
+Homepage = "https://github.com/allanabiud/Perdoo"
+Issues = "https://github.com/allanabiud/Perdoo/issues"
+Source = "https://github.com/allanabiud/Perdoo"
 
 [tool.coverage.report]
 show_missing = true

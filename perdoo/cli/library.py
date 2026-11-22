@@ -1,6 +1,6 @@
 __all__ = ["register"]
 
-from argparse import Namespace, _SubParsersAction
+from argparse import ArgumentParser, Namespace, _SubParsersAction
 from pathlib import Path
 
 from rich_argparse import RichHelpFormatter
@@ -36,7 +36,7 @@ def register(subparsers: _SubParsersAction) -> None:
         _add_common_options(action_parser)
 
 
-def _add_common_options(parser: _SubParsersAction) -> None:
+def _add_common_options(parser: ArgumentParser) -> None:
     parser.add_argument(
         "-i",
         "--ignore",
@@ -52,11 +52,16 @@ def _add_common_options(parser: _SubParsersAction) -> None:
         help="Synchronize even if stored metadata is recent.",
     )
     parser.add_argument(
-        "-F",
-        "--format",
-        dest="format",
-        metavar="FORMAT",
-        help="Force comic format (e.g. TPB, HC, OB, One-Shot, GN, Annual).",
+        "-o",
+        "--override-cv-format",
+        action="store_true",
+        help="Override the format provided by Comicvine via an interactive prompt.",
+    )
+    parser.add_argument(
+        "-l",
+        "--local",
+        action="store_true",
+        help="Organize without online services: parse metadata from the filename only.",
     )
     parser.add_argument(
         "-j",

@@ -124,16 +124,6 @@ class TestDetectFormatFromDescription:
 class TestResolveSeriesFormat:
     """Priority: CLI > existing metadata > filename > service > One-Shot rule."""
 
-    def test_cli_flag_beats_everything(self) -> None:
-        assert resolve_series_format(
-            series_name="Batman",
-            filename="Batman [TPB] #001 (2012).cbz",
-            cli_format="HC",
-            existing_format_comic="TPB",
-            fetched_format_comic="Omnibus",
-            prompt_if_missing=False,
-        ) == (Format.HARDCOVER, "HC")
-
     def test_existing_metron_format_beats_filename(self) -> None:
         assert resolve_series_format(
             series_name="Batman",

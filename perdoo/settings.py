@@ -24,7 +24,7 @@ class MetronInfo(Struct, rename="kebab"):
 
 
 class Naming(Struct, rename="kebab"):
-    pattern: str = "{publisher-name}/{series-name}[-v{volume}]/{series-name}[-v{volume}][_{format-short}]_#{number:3}"  # noqa: E501
+    pattern: str = r"{publisher-name}/{series-name}[ ({series-year})][ \[{format-short}\]]/{series-name} #{number:3}[ ({cover-year})]"  # noqa: E501
     seperator: Literal["-", "_", ".", " "] = "-"
 
 

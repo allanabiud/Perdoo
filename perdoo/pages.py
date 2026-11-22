@@ -65,7 +65,7 @@ def build_comic_pages(
                     prev = existing_map.get(idx)
                     page_type = (
                         prev.type
-                        if prev and prev.type
+                        if prev
                         else (PageType.FRONT_COVER if idx == 0 else PageType.STORY)
                     )
                     bookmark = prev.bookmark if prev else None
@@ -104,7 +104,7 @@ def build_comic_pages(
         prev = existing_map.get(idx)
         page_type = (
             prev.type
-            if prev and prev.type
+            if prev
             else (PageType.FRONT_COVER if idx == 0 else PageType.STORY)
         )
         bookmark = prev.bookmark if prev else None

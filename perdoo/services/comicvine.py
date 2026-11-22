@@ -10,7 +10,7 @@ from typing import TypeVar
 from natsort import humansorted, ns
 from questionary import Choice, confirm, text
 from shortbox.metadata import ComicInfo, MetronInfo
-from shortbox.metadata.metron_info import InformationSource
+from shortbox.metadata.metron_info import Format, InformationSource
 from simyan.comicvine import Comicvine as Simyan
 from simyan.errors import ServiceError
 from simyan.schemas.issue import Issue
@@ -103,12 +103,13 @@ ROLE_NORMALIZATION: dict[str, str] = {
 
 
 class Comicvine:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, override_format: bool = False):
         self.session = Simyan(
             api_key=api_key,
             cache_path=get_cache_home() / "simyan.sqlite",
             ratelimit_path=get_cache_home() / "simyan-rates.sqlite",
         )
+        self._override_format = override_format
 
     @comicvine_rate_limit_retry()
     def _search_series(
@@ -268,7 +269,7 @@ class Comicvine:
             return self._fetch_issue(series_id=series_id, search=search, filename=filename)
         return None
 
-    def _build_metron_info(self, series: Volume, issue: Issue) -> MetronInfo:
+    def _build_metron_info(self, series: Volume, issue: Issue, format_: Format | None = None) -> MetronInfo:
         from shortbox.metadata.metron_info import (  # noqa: PLC0415
             Arc,
             Credit,
@@ -301,6 +302,7 @@ class Comicvine:
                 name=series.name,
                 start_year=series.start_year,
                 alternative_names=[],
+                format=format_,
             ),
             collection_title=issue.name,
             number=issue.number,
@@ -337,11 +339,12 @@ class Comicvine:
             universes=[],
         )
 
-    def _build_comic_info(self, series: Volume, issue: Issue) -> ComicInfo:
+    def _build_comic_info(self, series: Volume, issue: Issue, format_: Format | None = None) -> ComicInfo:
         # Fallback to description if summary is missing
         summary = issue.summary
-        if (not summary or len(summary.strip()) < 20) and getattr(issue, "description", None):
-            clean_desc = re.sub(r"<[^>]+>", " ", issue.description)
+        description = getattr(issue, "description", None)
+        if (not summary or len(summary.strip()) < 20) and description:
+            clean_desc = re.sub(r"<[^>]+>", " ", description)
             clean_desc = re.sub(r"\s+", " ", clean_desc).strip()
             summary = clean_desc or summary
 
@@ -385,6 +388,9 @@ class Comicvine:
         comic_info.location_list = [x.name for x in issue.locations if x.name]
         comic_info.story_arc_list = [x.name for x in issue.story_arcs if x.name]
         set_comic_info_note_id(comic_info, source=InformationSource.COMIC_VINE, value=issue.id)
+
+        if format_ is not None:
+            comic_info.format = str(format_)
 
         return comic_info
 
@@ -430,5 +436,24 @@ class Comicvine:
                 "from Comicvine description text",
                 style="dim",
             )
+
+        # Override: questionary prompt to force a format when automatic
+        # detection cannot determine one (or the user explicitly opts in).
+        if self._override_format and not (
+            comic_info.format or (metron_info.series and metron_info.series.format)
+        ):
+            format_ = prompt_select(
+                message="Select a format",
+                choices=[
+                    Choice(title=str(x), value=x) for x in Format
+                ],
+            )
+            if format_ is not None:
+                apply_format_to_metadata(
+                    comic_info=comic_info,
+                    metron_info=metron_info,
+                    fmt_enum=format_,
+                    fmt_short=format_.value,
+                )
 
         return MetadataResult(comic_info=comic_info, metron_info=metron_info)

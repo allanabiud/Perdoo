@@ -43,11 +43,16 @@ def register(subparsers: _SubParsersAction) -> None:
         help="Synchronize even if the stored metadata was updated within the configured interval.",
     )
     parser.add_argument(
-        "-F",
-        "--format",
-        dest="format",
-        metavar="FORMAT",
-        help="Force comic format (e.g. TPB, HC, OB, One-Shot, GN, Annual).",
+        "-o",
+        "--override-cv-format",
+        action="store_true",
+        help="Override the format provided by Comicvine via an interactive prompt.",
+    )
+    parser.add_argument(
+        "-l",
+        "--local",
+        action="store_true",
+        help="Organize without online services: parse metadata from the filename only.",
     )
     parser.add_argument(
         "-w",

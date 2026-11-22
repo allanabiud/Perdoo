@@ -17,7 +17,7 @@ from shortbox.metadata import ComicInfo, MetronInfo
 from perdoo.cli._results import RunResult
 from perdoo.cli._utils import ArchiveType, RichHelpFormatter, enum_arg, existing_file_or_directory
 from perdoo.console import CONSOLE
-from perdoo.format_resolver import apply_format_to_metadata, parse_format_str
+from perdoo.local import build_local_metadata, parse_local_filename
 from perdoo.naming import build_file
 from perdoo.pages import update_comic_pages_metadata
 from perdoo.settings import Settings
@@ -46,16 +46,15 @@ def register(subparsers: _SubParsersAction) -> None:
         help="Skip archives with this extension. Repeat to ignore multiple extensions.",
     )
     parser.add_argument(
-        "-F",
-        "--format",
-        dest="format",
-        metavar="FORMAT",
-        help="Force comic format (e.g. TPB, HC, OB, One-Shot, GN, Annual).",
-    )
-    parser.add_argument(
         "--refresh-pages",
         action="store_true",
         help="Reinspect archive pages and refresh page metadata before renaming.",
+    )
+    parser.add_argument(
+        "-l",
+        "--local",
+        action="store_true",
+        help="Organize without online services: parse metadata from the filename only.",
     )
     parser.add_argument(
         "--dry-run",
@@ -104,13 +103,13 @@ def _cleanup_empty_dirs(start: Path, stop: Path) -> None:
         current = current.parent
 
 
-def rename_entry(  # noqa: C901, PLR0912
+def rename_entry(  # noqa: C901
     entry: Path,
     target: Path,
     settings: Settings,
-    cli_format: str | None = None,
     refresh_pages: bool = False,
     dry_run: bool = False,
+    local: bool = False,
 ) -> str:
     with Comic.open(file=entry) as comic:
         comic_info = None
@@ -120,12 +119,25 @@ def rename_entry(  # noqa: C901, PLR0912
         with contextlib.suppress(Exception):
             metron_info = comic.get_metadata(MetronInfo)
 
+        # Local mode: build metadata from the filename if none exists.
         updated = False
-        if cli_format:
-            fmt_enum, fmt_short = parse_format_str(cli_format)
-            if fmt_enum or fmt_short:
-                apply_format_to_metadata(comic_info, metron_info, fmt_enum, fmt_short)
-                updated = True
+        if local and comic_info is None and metron_info is None:
+            parsed = parse_local_filename(entry)
+            if not parsed.get("series"):
+                CONSOLE.print(
+                    f"'{entry.name}' could not be parsed for local mode; "
+                    "use a filename like 'Series #001 (2026).cbz'.",
+                    style="logging.level.error",
+                )
+                return "skipped"
+
+            comic_info, metron_info = build_local_metadata(
+                comic_file=entry, parsed=parsed, format_override=None
+            )
+            if not dry_run:
+                comic.set_metadata(comic_info)
+                comic.set_metadata(metron_info)
+            updated = True
 
         needs_page_refresh = refresh_pages or (
             comic_info is not None
@@ -211,9 +223,9 @@ def run(args: Namespace) -> RunResult:
                     entry=entry,
                     target=args.target,
                     settings=settings,
-                    cli_format=getattr(args, "format", None),
                     refresh_pages=getattr(args, "refresh_pages", False),
                     dry_run=getattr(args, "dry_run", False),
+                    local=args.local,
                 )
                 if status == "planned":
                     result.planned += 1

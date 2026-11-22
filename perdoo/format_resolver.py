@@ -220,7 +220,7 @@ def prompt_format_selection(
     default_choice = FORMAT_CHOICES[0]
     if default_short:
         for c in FORMAT_CHOICES:
-            if c.value[0] == default_short:
+            if c.value is not None and c.value[0] == default_short:
                 default_choice = c
                 break
     try:
@@ -252,7 +252,6 @@ def _prompt_for_guess(
 def resolve_series_format(
     series_name: str | None,
     filename: str,
-    cli_format: str | None = None,
     existing_format_comic: str | None = None,
     existing_format_metron: Format | None = None,
     fetched_format_comic: str | None = None,
@@ -260,13 +259,7 @@ def resolve_series_format(
     force_one_shot: bool = False,
     prompt_if_missing: bool = True,
 ) -> tuple[Format | None, str | None]:
-    # 1. On-demand CLI flag (-F / --format) has highest priority
-    if cli_format:
-        fmt, short = parse_format_str(cli_format)
-        if fmt or short:
-            return fmt, short
-
-    # 2. Existing format from metadata (preserves existing format across syncs)
+    # 1. Existing format from metadata (preserves existing format across syncs)
     if existing_format_metron and existing_format_metron != Format.SINGLE_ISSUE:
         return existing_format_metron, existing_format_metron.value
     if existing_format_comic:
