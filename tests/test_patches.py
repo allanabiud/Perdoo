@@ -62,6 +62,46 @@ def test_get_metadata_still_reads_wellformed_xml(tmp_path: Path) -> None:
     assert comic_info.format == "Trade Paperback"
 
 
+def test_get_metadata_handles_empty_and_self_closing_tags(tmp_path: Path) -> None:
+    """Empty or self-closing tags (like <Day/> or <Month></Month>) must not fail validation."""
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ComicInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Series>Absolute Batman</Series>
+  <Number>1</Number>
+  <Day/>
+  <Month> </Month>
+  <Year>2025</Year>
+</ComicInfo>
+"""
+    cbz = _make_cbz(tmp_path / "empty_tags.cbz", xml)
+    with Comic.open(file=cbz) as comic:
+        comic_info = comic.get_metadata(ComicInfo)
+    assert comic_info is not None
+    assert comic_info.series == "Absolute Batman"
+    assert comic_info.number == "1"
+    assert comic_info.year == 2025
+    assert comic_info.day is None
+    assert comic_info.month is None
+
+
+def test_get_metadata_recovers_from_multiple_invalid_tags(tmp_path: Path) -> None:
+    """Multiple tags with invalid types are stripped so remaining metadata is recovered."""
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ComicInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Series>Watchmen</Series>
+  <Number>1</Number>
+  <PageCount>not-a-number</PageCount>
+  <Year>not-a-year</Year>
+</ComicInfo>
+"""
+    cbz = _make_cbz(tmp_path / "multiple_invalid.cbz", xml)
+    with Comic.open(file=cbz) as comic:
+        comic_info = comic.get_metadata(ComicInfo)
+    assert comic_info is not None
+    assert comic_info.series == "Watchmen"
+    assert comic_info.number == "1"
+
+
 def test_get_metadata_error_message_is_not_empty(tmp_path: Path) -> None:
     """A failure that cannot be sanitised must raise with a usable message.
 
@@ -72,9 +112,7 @@ def test_get_metadata_error_message_is_not_empty(tmp_path: Path) -> None:
     xml = """<?xml version="1.0" encoding="utf-8"?>
 <ComicInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <Series>Watchmen</Series>
-  <Number>1</Number>
-  <PageCount>not-a-number</PageCount>
-  <Year>not-a-year</Year>
+  <<<malformed-token>>>
 </ComicInfo>
 """
     cbz = _make_cbz(tmp_path / "broken.cbz", xml)

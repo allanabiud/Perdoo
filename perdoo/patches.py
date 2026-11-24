@@ -59,28 +59,39 @@ def _sanitized_get_metadata(self: Comic, metadata_type: type[MetadataT]) -> Meta
                 r"&(?!(?:#\d+|#x[0-9a-fA-F]+|[a-zA-Z][\w.-]*);)", "&amp;", cleaned_text
             )
 
-            try:
-                instance = decode(cleaned_text.encode("utf-8"), type_=metadata_type)
-                self._metadata_cache[metadata_type] = instance
-                return instance
-            except ValidationError as val_err:
-                # If validation still fails on a specific tag, strip that tag and retry
-                err_msg = str(val_err)
-                field_match = re.search(r"at `\$\.([a-zA-Z0-9_]+)", err_msg)
-                if field_match:
-                    tag_name = field_match.group(1)
-                    stripped_text = re.sub(
-                        rf"<{tag_name}>.*?</{tag_name}>",
-                        "",
-                        cleaned_text,
-                        flags=re.DOTALL | re.IGNORECASE,
-                    )
-                    instance = decode(stripped_text.encode("utf-8"), type_=metadata_type)
+            # Strip empty or whitespace-only elements (e.g. <Day/>, <Day></Day>, <Month/>)
+            # which msgspec_xml interprets as empty strings, causing validation errors
+            # on integer/numeric fields.
+            cleaned_text = re.sub(
+                r"<([a-zA-Z0-9_]+)(?:\s[^>]*)?(?:>\s*</\1>|/>)", "", cleaned_text
+            )
+
+            # If validation still fails on specific tags, strip and retry
+            current_text = cleaned_text
+            for _ in range(10):
+                try:
+                    instance = decode(current_text.encode("utf-8"), type_=metadata_type)
                     self._metadata_cache[metadata_type] = instance
                     return instance
-                raise MetadataValidationError(
-                    f"Invalid {metadata_type.__name__} metadata: {err_msg}"
-                ) from val_err
+                except ValidationError as val_err:
+                    err_msg = str(val_err)
+                    field_match = re.search(r"at `\$\.([a-zA-Z0-9_]+)", err_msg)
+                    if not field_match:
+                        raise MetadataValidationError(
+                            f"Invalid {metadata_type.__name__} metadata: {err_msg}"
+                        ) from val_err
+                    tag_name = field_match.group(1)
+                    new_text = re.sub(
+                        rf"<{tag_name}(?:\s[^>]*)?(?:>.*?</{tag_name}>|/>)",
+                        "",
+                        current_text,
+                        flags=re.DOTALL | re.IGNORECASE,
+                    )
+                    if new_text == current_text:
+                        raise MetadataValidationError(
+                            f"Invalid {metadata_type.__name__} metadata: {err_msg}"
+                        ) from val_err
+                    current_text = new_text
         except MetadataValidationError:
             raise
         except Exception as err:

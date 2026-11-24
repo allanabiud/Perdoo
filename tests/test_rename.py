@@ -216,7 +216,7 @@ class TestRenameEntryCleanup:
             zf.writestr("page01.jpg", b"fake-image-bytes")
             zf.writestr(
                 "ComicInfo.xml",
-                "<ComicInfo><PageCount>bad</PageCount><Year>bad</Year></ComicInfo>",
+                "<ComicInfo><<<not-valid-xml>>>",
             )
 
         output = tmp_path / "library"
@@ -224,7 +224,7 @@ class TestRenameEntryCleanup:
             output=Output(
                 folder=output,
                 comic_info=ComicInfo(handle_pages=False),
-                naming=Naming(pattern="{series-name} #{number} ({year})", seperator=" "),
+                naming=Naming(pattern="{series-name} #{number}", seperator=" "),
             )
         )
 
