@@ -5,8 +5,7 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from perdoo.cli import pipeline
-from perdoo.cli import convert
+from perdoo.cli import convert, pipeline
 from perdoo.cli._parser import build_parser
 from perdoo.cli._results import Failure, RunResult
 

@@ -6,13 +6,13 @@ __all__ = [
     "set_comic_info_note_id",
 ]
 
+import contextlib
 import re
 from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
 
 from comicfn2dict import comicfn2dict
-from imagehash import phash
 from PIL import Image
 from shortbox import Comic
 from shortbox.errors import MissingArchiveMemberError
@@ -66,14 +66,10 @@ class Search:
         search: Search
         metron_info = None
         comic_info = None
-        try:
+        with contextlib.suppress(Exception):
             metron_info = comic.get_metadata(MetronInfo)
-        except Exception:
-            pass
-        try:
+        with contextlib.suppress(Exception):
             comic_info = comic.get_metadata(ComicInfo)
-        except Exception:
-            pass
 
         if metron_info and metron_info.series and metron_info.series.name:
             search = search_from_metron_info(metadata=metron_info, filename=comic.file.stem)
@@ -87,9 +83,15 @@ class Search:
 
 def _get_cover_hash(comic: Comic) -> str | None:
     try:
+        # Imported lazily: imagehash pulls in numpy, which can fail to import on
+        # CPUs missing the baseline features its wheels were built with.
+        from imagehash import phash  # noqa: PLC0415
+
         with Image.open(BytesIO(comic.get_cover())) as cover:
             return str(phash(cover))
-    except (MissingArchiveMemberError, OSError) as err:
+    except (ImportError, RuntimeError, MissingArchiveMemberError, OSError) as err:
+        # ImportError/RuntimeError: imagehash's numpy dependency can fail to import
+        # on CPUs missing the baseline features its wheels were built with.
         CONSOLE.print(
             f"Unable to generate a cover hash for {comic.file.name!r}: {err}",
             style="logging.level.warning",

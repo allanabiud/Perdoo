@@ -2,8 +2,6 @@ from __future__ import annotations
 
 __all__ = ["convert_archive", "register", "run"]
 
-import argparse
-from argparse import Namespace, _SubParsersAction
 import concurrent.futures
 import os
 import pathlib
@@ -11,7 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import time
-from typing import Dict, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING
 
 from rich.progress import (
     BarColumn,
@@ -29,6 +27,9 @@ from perdoo.console import CONSOLE
 from perdoo.settings import Settings
 from perdoo.utils import list_files
 
+if TYPE_CHECKING:
+    from argparse import Namespace, _SubParsersAction
+
 try:
     from PIL import Image
 
@@ -36,11 +37,11 @@ try:
 except ImportError:
     HAS_PILLOW = False
 
-IMAGE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".jxl", ".tiff", ".webp"}
-CONVERTIBLE_EXTENSIONS: Set[str] = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".jxl", ".tiff"}
-COMIC_EXTENSIONS: Set[str] = {".cbz", ".cbr", ".cb7", ".cbt", ".zip", ".rar", ".7z"}
-JUNK_FILES: Set[str] = {"thumbs.db", ".ds_store", "desktop.ini"}
-JUNK_DIRS: Set[str] = {"__macosx"}
+IMAGE_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".jxl", ".tiff", ".webp"}
+CONVERTIBLE_EXTENSIONS: set[str] = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".jxl", ".tiff"}
+COMIC_EXTENSIONS: set[str] = {".cbz", ".cbr", ".cb7", ".cbt", ".zip", ".rar", ".7z"}
+JUNK_FILES: set[str] = {"thumbs.db", ".ds_store", "desktop.ini"}
+JUNK_DIRS: set[str] = {"__macosx"}
 
 
 def human_size(bytes_val: float) -> str:
@@ -51,8 +52,8 @@ def human_size(bytes_val: float) -> str:
     return f"{bytes_val:.1f} TB"
 
 
-def inspect_archive(archive_path: pathlib.Path) -> Tuple[Dict[str, int], int]:
-    ext_counts: Dict[str, int] = {}
+def inspect_archive(archive_path: pathlib.Path) -> tuple[dict[str, int], int]:
+    ext_counts: dict[str, int] = {}
     total_files = 0
 
     try:
@@ -77,7 +78,7 @@ def inspect_archive(archive_path: pathlib.Path) -> Tuple[Dict[str, int], int]:
     return ext_counts, total_files
 
 
-def is_already_webp(archive_path: pathlib.Path, ext_counts: Dict[str, int]) -> bool:
+def is_already_webp(archive_path: pathlib.Path, ext_counts: dict[str, int]) -> bool:
     if archive_path.suffix.lower() != ".cbz":
         return False
 
@@ -140,7 +141,7 @@ def convert_archive(
     jobs: int = 4,
     force: bool = False,
     dry_run: bool = False,
-) -> Tuple[str, int, int]:
+) -> tuple[str, int, int]:
     orig_size = archive_path.stat().st_size
 
     ext_counts, _ = inspect_archive(archive_path)
@@ -170,7 +171,7 @@ def convert_archive(
 
         clean_clutter(extract_dir)
 
-        tasks: List[Tuple[pathlib.Path, pathlib.Path]] = []
+        tasks: list[tuple[pathlib.Path, pathlib.Path]] = []
         for root, _, files in os.walk(extract_dir):
             for file_name in files:
                 file_path = pathlib.Path(root) / file_name

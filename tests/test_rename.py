@@ -156,3 +156,80 @@ class TestRenameEntryCleanup:
         assert entry.exists()
         assert entry.read_bytes() == original
         assert not output.exists()
+
+    def test_dry_run_local_mode_plans_rename_from_filename(self, tmp_path: Path) -> None:
+        source = tmp_path / "source"
+        source.mkdir()
+        entry = source / "Watchmen #001 (1987).cbz"
+        with zipfile.ZipFile(entry, "w") as zf:
+            zf.writestr("page01.jpg", b"fake-image-bytes")
+
+        output = tmp_path / "library"
+        settings = Settings(
+            output=Output(
+                folder=output,
+                comic_info=ComicInfo(handle_pages=False),
+                naming=Naming(pattern="{series-name} #{number} ({year})", seperator=" "),
+            )
+        )
+
+        status = rename_entry(
+            entry=entry, target=source, settings=settings, dry_run=True, local=True
+        )
+
+        assert status == "planned"
+        assert entry.exists()
+        assert not output.exists()
+
+    def test_dry_run_local_mode_recovers_when_archive_has_broken_xml(self, tmp_path: Path) -> None:
+        source = tmp_path / "source"
+        source.mkdir()
+        entry = source / "Watchmen #001 (1987).cbz"
+        with zipfile.ZipFile(entry, "w") as zf:
+            zf.writestr("page01.jpg", b"fake-image-bytes")
+            zf.writestr(
+                "ComicInfo.xml",
+                "<ComicInfo><PageCount>bad</PageCount><Year>bad</Year></ComicInfo>",
+            )
+
+        output = tmp_path / "library"
+        settings = Settings(
+            output=Output(
+                folder=output,
+                comic_info=ComicInfo(handle_pages=False),
+                naming=Naming(pattern="{series-name} #{number} ({year})", seperator=" "),
+            )
+        )
+
+        status = rename_entry(
+            entry=entry, target=source, settings=settings, dry_run=True, local=True
+        )
+
+        assert status == "planned"
+        assert entry.exists()
+
+    def test_broken_metadata_skips_without_crashing_in_non_local_mode(self, tmp_path: Path) -> None:
+        source = tmp_path / "source"
+        source.mkdir()
+        entry = source / "broken.cbz"
+        with zipfile.ZipFile(entry, "w") as zf:
+            zf.writestr("page01.jpg", b"fake-image-bytes")
+            zf.writestr(
+                "ComicInfo.xml",
+                "<ComicInfo><PageCount>bad</PageCount><Year>bad</Year></ComicInfo>",
+            )
+
+        output = tmp_path / "library"
+        settings = Settings(
+            output=Output(
+                folder=output,
+                comic_info=ComicInfo(handle_pages=False),
+                naming=Naming(pattern="{series-name} #{number} ({year})", seperator=" "),
+            )
+        )
+
+        status = rename_entry(
+            entry=entry, target=source, settings=settings, dry_run=True, local=False
+        )
+
+        assert status == "skipped"

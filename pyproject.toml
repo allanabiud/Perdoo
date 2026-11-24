@@ -76,7 +76,6 @@ pdf = [
 ]
 
 [project.scripts]
-Perdoo = "perdoo.__main__:main"
 perdoo = "perdoo.__main__:main"
 
 [project.urls]

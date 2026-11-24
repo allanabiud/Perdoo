@@ -3,7 +3,9 @@
 import zipfile
 from pathlib import Path
 
+import pytest
 from shortbox import Comic
+from shortbox.errors import MetadataValidationError
 from shortbox.metadata import ComicInfo
 
 import perdoo  # noqa: F401  # applies the get_metadata patches on import
@@ -58,3 +60,24 @@ def test_get_metadata_still_reads_wellformed_xml(tmp_path: Path) -> None:
     assert comic_info is not None
     assert comic_info.series == "Watchmen"
     assert comic_info.format == "Trade Paperback"
+
+
+def test_get_metadata_error_message_is_not_empty(tmp_path: Path) -> None:
+    """A failure that cannot be sanitised must raise with a usable message.
+
+    `str()` of the raised error is what the CLI prints in
+    "Failed to rename ...: {err}"; an empty message produced a bare,
+    unexplained failure line for every affected archive.
+    """
+    xml = """<?xml version="1.0" encoding="utf-8"?>
+<ComicInfo xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <Series>Watchmen</Series>
+  <Number>1</Number>
+  <PageCount>not-a-number</PageCount>
+  <Year>not-a-year</Year>
+</ComicInfo>
+"""
+    cbz = _make_cbz(tmp_path / "broken.cbz", xml)
+    with Comic.open(file=cbz) as comic, pytest.raises(MetadataValidationError) as exc_info:
+        comic.get_metadata(ComicInfo)
+    assert str(exc_info.value)

@@ -1,8 +1,8 @@
 __all__ = ["apply_patches"]
 
+import re
 from io import BytesIO
 from pathlib import Path
-import re
 from typing import TypeVar
 from xml.etree.ElementTree import ParseError
 
@@ -47,7 +47,7 @@ def _sanitized_get_metadata(self: Comic, metadata_type: type[MetadataT]) -> Meta
             def _fix_web(match: re.Match[str]) -> str:
                 urls = match.group(1).split()
                 for u in urls:
-                    if u.startswith("http://") or u.startswith("https://"):
+                    if u.startswith(("http://", "https://")):
                         return f"<Web>{u}</Web>"
                 return ""
 
@@ -66,7 +66,7 @@ def _sanitized_get_metadata(self: Comic, metadata_type: type[MetadataT]) -> Meta
             except ValidationError as val_err:
                 # If validation still fails on a specific tag, strip that tag and retry
                 err_msg = str(val_err)
-                field_match = re.search(r"at `\$\.([a-zA-Z0-9_]+)`", err_msg)
+                field_match = re.search(r"at `\$\.([a-zA-Z0-9_]+)", err_msg)
                 if field_match:
                     tag_name = field_match.group(1)
                     stripped_text = re.sub(
@@ -78,9 +78,15 @@ def _sanitized_get_metadata(self: Comic, metadata_type: type[MetadataT]) -> Meta
                     instance = decode(stripped_text.encode("utf-8"), type_=metadata_type)
                     self._metadata_cache[metadata_type] = instance
                     return instance
-                raise MetadataValidationError from val_err
+                raise MetadataValidationError(
+                    f"Invalid {metadata_type.__name__} metadata: {err_msg}"
+                ) from val_err
+        except MetadataValidationError:
+            raise
         except Exception as err:
-            raise MetadataValidationError from err
+            raise MetadataValidationError(
+                f"Unable to read {metadata_type.__name__} metadata: {err}"
+            ) from err
 
     return None
 

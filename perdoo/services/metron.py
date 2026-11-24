@@ -7,7 +7,6 @@ from functools import wraps
 from math import ceil
 from typing import TypeVar
 
-from imagehash import hex_to_hash
 from mokkari.exceptions import ApiError, RateLimitError
 from mokkari.schemas.issue import Issue
 from mokkari.schemas.series import Series
@@ -165,6 +164,10 @@ class Metron:
         if not cover_hash:
             return None
         try:
+            # Imported lazily: imagehash pulls in numpy, which can fail to import
+            # on CPUs missing the baseline features its wheels were built with.
+            from imagehash import hex_to_hash  # noqa: PLC0415
+
             source_hash = hex_to_hash(hexstr=cover_hash)
             options = [
                 issue
@@ -186,6 +189,12 @@ class Metron:
                 choices=choices,
             )
             return selected.id if selected else None
+        except (ImportError, RuntimeError) as err:
+            CONSOLE.print(
+                f"Imagehash unavailable for cover hash comparison: {err}",
+                style="logging.level.warning",
+            )
+            return None
         except ApiError as err:
             CONSOLE.print(err, style="logging.level.error")
         return None

@@ -1,5 +1,6 @@
 __all__ = ["build_file", "evaluate_pattern", "from_comic_info", "from_metron_info"]
 
+import contextlib
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -294,10 +295,23 @@ def enforce_filesystem_safety(relative_name: str) -> str:
     return "/".join(_make_component_safe(part) for part in parts)
 
 
-def build_file(comic: Comic, folder: Path, settings: Naming) -> Path | None:
-    if metron_info := comic.get_metadata(MetronInfo):
+def build_file(
+    comic: Comic,
+    folder: Path,
+    settings: Naming,
+    metron_info: MetronInfo | None = None,
+    comic_info: ComicInfo | None = None,
+) -> Path | None:
+    if metron_info is None and comic_info is None:
+        with contextlib.suppress(Exception):
+            metron_info = comic.get_metadata(MetronInfo)
+        if metron_info is None:
+            with contextlib.suppress(Exception):
+                comic_info = comic.get_metadata(ComicInfo)
+
+    if metron_info:
         filename = from_metron_info(metadata=metron_info, settings=settings)
-    elif comic_info := comic.get_metadata(ComicInfo):
+    elif comic_info:
         filename = from_comic_info(metadata=comic_info, settings=settings)
     else:
         return None

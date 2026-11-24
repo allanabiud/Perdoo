@@ -162,7 +162,11 @@ def rename_entry(  # noqa: C901
                 comic.set_metadata(metron_info)
 
         new_file = build_file(
-            comic=comic, folder=settings.output.folder, settings=settings.output.naming
+            comic=comic,
+            folder=settings.output.folder,
+            settings=settings.output.naming,
+            metron_info=metron_info,
+            comic_info=comic_info,
         )
         if not new_file:
             CONSOLE.print(f"'{entry.name}' has no recognised metadata, skipping")
@@ -238,7 +242,10 @@ def run(args: Namespace) -> RunResult:
                 CONSOLE.print(f"'{entry.name}' is not a supported archive, skipping")
             except Exception as err:  # noqa: BLE001
                 result.add_failure(entry, err)
+                # Some exceptions carry no message; fall back to the type name
+                # so the failure never prints as a bare "Failed to rename ...:".
+                detail = str(err) or type(err).__name__
                 CONSOLE.print(
-                    f"Failed to rename '{entry.name}': {err}", style="logging.level.error"
+                    f"Failed to rename '{entry.name}': {detail}", style="logging.level.error"
                 )
     return result

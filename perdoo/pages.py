@@ -1,9 +1,9 @@
 __all__ = ["build_comic_pages", "update_comic_pages_metadata"]
 
+import zipfile
 from collections.abc import Sequence
 from io import BytesIO
 from pathlib import Path
-import zipfile
 
 from natsort import humansorted, ns
 from PIL import Image
@@ -55,9 +55,8 @@ def build_comic_pages(
                     try:
                         info = zf.getinfo(fname)
                         fsize = info.file_size
-                        with zf.open(fname) as fp:
-                            with Image.open(fp) as im:
-                                width, height = im.size
+                        with zf.open(fname) as fp, Image.open(fp) as im:
+                            width, height = im.size
                         is_double = bool(width and height and width > height)
                     except Exception:
                         pass
@@ -148,9 +147,8 @@ def update_comic_pages_metadata(
         comic_info.pages = pages
         updated = True
 
-    if metron_info is not None:
-        if metron_info.page_count != page_count:
-            metron_info.page_count = page_count
-            updated = True
+    if metron_info is not None and metron_info.page_count != page_count:
+        metron_info.page_count = page_count
+        updated = True
 
     return updated
